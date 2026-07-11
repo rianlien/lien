@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mesh-gradient-spike",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["/Users/rian-ishikawa/Desktop/Claude/myplanet/tmp/prototype/mesh-gradient-spike/server.js"],
+      "port": 8743
+    }
+  ]
+}
