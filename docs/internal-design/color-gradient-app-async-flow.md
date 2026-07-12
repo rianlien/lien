@@ -2,24 +2,44 @@
 
 <internal_design status="unrealized" name="async_invite_response_flow_design" requirements="async_invite_response_flow">
 
-実装本体: `app/mesh-gradient/server.js`（API＋永続化）、`app/mesh-gradient/public/index.html`（発起人）、
-`app/mesh-gradient/public/reply.html`（回答者）、`app/mesh-gradient/public/mesh-render.js`（描画エンジン、
-発起人・回答者の両ページで共有）。各処理のWHYはコードコメントに書いてあるため重複させない。ここに書くのは、
-要件をどの技術選択で満たすことにしたか、という設計判断のみ。
+実装本体:
+- `app/mesh-gradient/lib/participants.js` — セッション/参加者に対する業務ロジック（作成・追加・確定・削除・
+  ロック判定）。永続化方式から独立した純粋関数として書いてあり、ローカル開発とVercelデプロイの両方で共有する。
+- `app/mesh-gradient/lib/file-store.js` — ローカル開発用の永続化（JSONファイル、セッションごとに1ファイル）。
+- `app/mesh-gradient/lib/kv-store.js` — Vercelデプロイ用の永続化（Upstash Redis）。
+- `app/mesh-gradient/server.js` — ローカル開発用サーバー（Node httpモジュール、file-storeを使う）。
+- `app/mesh-gradient/api/**` — Vercelデプロイ用のserverless functions（kv-storeを使う）。
+- `app/mesh-gradient/public/index.html`（発起人）、`public/reply.html`（回答者）、`public/mesh-render.js`
+  （描画エンジン、発起人・回答者の両ページで共有）。
 
-## 永続化方式: 自前サーバー＋JSONファイル（fable-advisorへの相談結果）
+各処理のWHYはコードコメントに書いてあるため重複させない。ここに書くのは、要件をどの技術選択で満たすことにしたか、
+という設計判断のみ。
 
-「友達の返信が発起人側で自動反映されてほしい」という要件（往復リンク方式では満たせない）から、状態をサーバー側に
-持つ構成が必須と判断した。その上で、DBミドルウェア（SQLite等）や外部BaaS（Firebase/Supabase等）を今は選ばず、
-`app/mesh-gradient/data/sessions.json` への素朴な読み書きにした理由:
+## 永続化方式の変遷: 自前サーバー＋JSONファイル → ローカル/Vercelで共有ロジック＋Upstash Redis
 
-- 現段階の利用規模が発起人自身による検証のみ（要件定義に明記）で、同時書き込みの衝突を心配する規模ではない。
-- 外部サービスへの依存・アカウント契約は、実際に配布する段階の判断（ホスティング・公開範囲）と合わせて
-  後から決めた方が良い、というfable-advisorの助言に沿った。
-- データ契約（参加者のスキーマ: id/label/x/y/color/reach/isSelf/respondedAt）をストレージの実装から独立させて
-  あるので、後でSQLite等に載せ替える場合もAPIハンドラの中身を差し替えるだけで済む設計にしている
-  （`loadDb`/`saveDb`の2関数に永続化ロジックを閉じ込め、それ以外のコードはメモリ上のオブジェクトとして
-  db を扱っている）。
+当初（発起人自身の検証段階）は、「友達の返信が発起人側で自動反映されてほしい」という要件（往復リンク方式では
+満たせない）から状態をサーバー側に持つ構成が必須と判断し、DBミドルウェア（SQLite等）や外部BaaS
+（Firebase/Supabase等）を選ばず、自前サーバー＋JSONファイルへの素朴な読み書きにした
+（fable-advisorの助言:「実際に配布する段階の判断と合わせて後から決めた方がいい」）。
+
+その後、「実際に友達に招待リンクを送って回答してもらう」段階に進むことになり、ホスティング判断
+（fable-advisorへ再相談）の結果、GitHub Pages（静的ファイルのみ配信）単体ではバックエンドが動かせないため、
+フロント・バックエンドをまとめて動かせるVercelを使うことにした。VercelはNode.jsのサーバーではなく
+serverless functionsとしてAPIを実行するため、ファイルシステムへの永続化は使えない
+（サーバーレス環境は実行のたびに別インスタンスで動きうるため、ローカルディスクへの書き込みが確実に残らない）。
+そこで:
+
+- 業務ロジック（`lib/participants.js`）を、ストレージの実装から完全に独立した純粋関数として切り出した
+  （引数で渡された`session`オブジェクトを読み書きするだけで、ファイルかKVかを一切知らない）。これにより、
+  ローカル開発（`server.js`＋`file-store.js`）とVercel本番（`api/**`＋`kv-store.js`）が**同じロジックを
+  共有**し、ロック条件（respondedAtによる色/影響範囲/位置のロック等）が二重実装でズレる心配がなくなった。
+- 永続化の単位を「セッション全体を1つの巨大なJSON（旧`data/sessions.json`）」から「セッションごとに1キー
+  （ファイルなら1ファイル、KVなら1キー）」に変更した。KVはフラットなキーバリューストアなので、この粒度の
+  方が自然に対応する。
+- Vercel向けのKVには`@vercel/kv`ではなく`@upstash/redis`を使う。`@vercel/kv`は2024年12月にUpstash Redisへ
+  統合され非推奨になっており、後継である`@upstash/redis`（`Redis.fromEnv()`）を直接使うのが現在の推奨。
+  Vercelダッシュボードで「Upstash」インテグレーションをプロジェクトに接続すると、`Redis.fromEnv()`が読む
+  環境変数（`KV_REST_API_URL`/`KV_REST_API_TOKEN`）が自動設定される。
 
 ## 回答者ページには「自分の分＋発起人の色1点だけ」しか渡さない
 
