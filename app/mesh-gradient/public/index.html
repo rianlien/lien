@@ -160,6 +160,7 @@
       if (!sessionId || dragging) return;
       apiGet("/api/sessions/" + sessionId).then(function (res) {
         if (dragging) return; // 応答が返ってくるまでの間にドラッグが始まった場合は上書きしない
+        if (!res || !res.participants) return; // サーバー側でセッションが読めない場合は何もせず次回に任せる
         points = res.participants;
         if (flow === "idle" || flow === "awaiting-self-color") {
           renderList();
@@ -176,7 +177,7 @@
       var row = document.createElement("div");
       row.className = "point-row" + (p.isSelf && !p.color ? " pending" : "") + (!p.isSelf && p.color ? " responded" : "");
 
-      if (p.isSelf) {
+      if (p.isSelf && !p.color) {
         var colorInput = document.createElement("input");
         colorInput.type = "color";
         colorInput.id = "color-" + p.id;
@@ -198,6 +199,14 @@
           });
         });
         row.appendChild(colorInput);
+      } else if (p.isSelf) {
+        // 自分も、一度色を決めたら発起人自身も含めてロック対象（色を見てから調整するバイアスを防ぐため）
+        var selfSwatch = document.createElement("div");
+        selfSwatch.style.width = "32px";
+        selfSwatch.style.height = "32px";
+        selfSwatch.style.borderRadius = "6px";
+        selfSwatch.style.background = p.color;
+        row.appendChild(selfSwatch);
       } else {
         var swatch = document.createElement("div");
         swatch.style.width = "32px";
@@ -271,21 +280,32 @@
       var reachLabel = document.createElement("span");
       reachLabel.className = "reach-label";
       reachLabel.textContent = "影響範囲";
-      var reachInput = document.createElement("input");
-      reachInput.type = "range";
-      reachInput.min = "0.08";
-      reachInput.max = "0.95";
-      reachInput.step = "0.01";
-      reachInput.value = p.reach || MeshRender.DEFAULT_REACH;
-      reachInput.addEventListener("input", function () {
-        p.reach = parseFloat(reachInput.value);
-        render();
-      });
-      reachInput.addEventListener("change", function () {
-        apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { reach: p.reach });
-      });
       reachRow.appendChild(reachLabel);
-      reachRow.appendChild(reachInput);
+
+      // 色を一度でも決めたら、発起人自身も含めて影響範囲を固定する（色を見てから強さを調整できてしまうと、
+      // 位置決め時点の関係性の感覚ではなく色への印象で結果を歪めてしまうため）。
+      var locked = !!p.color;
+      if (locked) {
+        var reachLocked = document.createElement("span");
+        reachLocked.className = "reach-label";
+        reachLocked.textContent = "固定済み（" + (p.reach || MeshRender.DEFAULT_REACH).toFixed(2) + "）";
+        reachRow.appendChild(reachLocked);
+      } else {
+        var reachInput = document.createElement("input");
+        reachInput.type = "range";
+        reachInput.min = "0.08";
+        reachInput.max = "0.95";
+        reachInput.step = "0.01";
+        reachInput.value = p.reach || MeshRender.DEFAULT_REACH;
+        reachInput.addEventListener("input", function () {
+          p.reach = parseFloat(reachInput.value);
+          render();
+        });
+        reachInput.addEventListener("change", function () {
+          apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { reach: p.reach });
+        });
+        reachRow.appendChild(reachInput);
+      }
       listEl.appendChild(reachRow);
     });
   }
@@ -313,8 +333,11 @@
     if (flow === "placing-friend") { placeFriend(u); return; }
     if (flow !== "idle") return;
 
+    // 色を一度でも決めた点は、発起人自身も含めてドラッグ対象から外す（色を見てから位置を動かせてしまう
+    // バイアスを防ぐため。reach・colorのロックと同条件）
     var closest = null, closestDist = Infinity;
     points.forEach(function (p) {
+      if (p.color) return;
       var d = Math.hypot(p.x - u.x, p.y - u.y);
       if (d < closestDist) { closestDist = d; closest = p; }
     });
@@ -339,10 +362,30 @@
     canvas.style.cursor = "grab";
   });
 
+  // 保存されていたセッションIDがある前提で起動を試み、サーバー側にそのデータが無かった場合の復旧
+  function startFresh() {
+    localStorage.removeItem(LS_SESSION);
+    localStorage.removeItem(LS_SELF);
+    sessionId = null;
+    selfId = null;
+    points = [];
+    flow = "placing-self";
+    updateInstruction();
+    renderList();
+    render();
+  }
+
   // ---- 起動: 既存セッションがあれば復元、なければ自分の配置から開始 ----
   function boot() {
     if (sessionId) {
       apiGet("/api/sessions/" + sessionId).then(function (res) {
+        if (!res || !res.participants) {
+          // ブラウザに残っていたセッションIDが、サーバー側には存在しない
+          // （データをリセットした／別のサーバーインスタンスを指している等）。
+          // このまま進めると自分の位置すら選べない詰み状態になるため、新規セッションとして復旧する。
+          startFresh();
+          return;
+        }
         points = res.participants;
         var self = points.filter(function (p) { return p.isSelf; })[0];
         pendingSelf = self && !self.color ? self : null;
@@ -352,7 +395,7 @@
         renderList();
         render();
         startPolling();
-      });
+      }).catch(startFresh);
     } else {
       updateInstruction();
       renderList();

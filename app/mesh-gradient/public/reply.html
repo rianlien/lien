@@ -50,7 +50,45 @@
     pane.appendChild(div);
   }
 
+  // ポストカードは自分の色×発起人の色の2点グラデーションにする（発起人の位置や他の友達の情報は渡ってこない）。
+  // 自分の色を上、発起人の色を下に置き、その間で混ざり合う見た目にする。
+  function appendPostcard(participant, hintText) {
+    var canvasWrap = document.createElement("div");
+    canvasWrap.className = "reply-canvas-wrap";
+    var canvas = document.createElement("canvas");
+    canvas.width = 560;
+    canvas.height = 840;
+    canvasWrap.appendChild(canvas);
+    pane.appendChild(canvasWrap);
+
+    var points = [{ id: participantId, x: 0.5, y: 0.28, color: participant.color, reach: 0.42 }];
+    if (participant.initiatorColor) {
+      points.push({ id: participantId + "-initiator", x: 0.5, y: 0.72, color: participant.initiatorColor, reach: 0.42 });
+    }
+    MeshRender.render(canvas, points, "perceptual");
+
+    var doneHint = document.createElement("div");
+    doneHint.className = "reply-done-hint";
+    doneHint.textContent = hintText;
+    pane.appendChild(doneHint);
+  }
+
+  // 送信済みの参加者には、色を選び直す手段を一切見せない（やり直し不可はUI側でも徹底する）
+  function renderAlreadyResponded(participant) {
+    pane.innerHTML = "";
+    var question = document.createElement("div");
+    question.className = "reply-question";
+    question.textContent = "回答ありがとう。";
+    pane.appendChild(question);
+    appendPostcard(participant, "この色は送信済み。もう選び直すことはできない。");
+  }
+
   function renderForm(participant) {
+    if (participant.respondedAt) {
+      renderAlreadyResponded(participant);
+      return;
+    }
+
     pane.innerHTML = "";
 
     var question = document.createElement("div");
@@ -60,40 +98,19 @@
 
     var hint = document.createElement("div");
     hint.className = "reply-done-hint";
-    hint.textContent = "理由や説明はいらない。直感で選んでください。";
+    hint.textContent = "理由や説明はいらない。直感で選んでください。送信すると選び直せない。";
     pane.appendChild(hint);
 
     var picker = document.createElement("input");
     picker.type = "color";
     picker.className = "reply-picker";
-    picker.value = participant.color || "#e8546a";
+    picker.value = "#e8546a";
     pane.appendChild(picker);
 
     var submit = document.createElement("button");
     submit.className = "reply-submit";
-    submit.textContent = participant.respondedAt ? "選び直して更新する" : "送信する";
+    submit.textContent = "送信する";
     pane.appendChild(submit);
-
-    var canvasWrap = document.createElement("div");
-    canvasWrap.className = "reply-canvas-wrap";
-    var canvas = document.createElement("canvas");
-    canvas.width = 560;
-    canvas.height = 840;
-    canvasWrap.appendChild(canvas);
-
-    var doneHint = document.createElement("div");
-    doneHint.className = "reply-done-hint";
-
-    function showPostcard(color) {
-      if (!canvasWrap.parentNode) pane.appendChild(canvasWrap);
-      if (!doneHint.parentNode) pane.appendChild(doneHint);
-      MeshRender.render(canvas, [{ id: participantId, x: 0.5, y: 0.38, color: color, reach: 0.55 }], "perceptual");
-      doneHint.textContent = "送信済み。この色が、相手のグラデーションの一部になる。";
-    }
-
-    if (participant.respondedAt) {
-      showPostcard(participant.color);
-    }
 
     submit.addEventListener("click", function () {
       submit.disabled = true;
@@ -104,9 +121,7 @@
       })
         .then(function (r) { return r.json(); })
         .then(function (updated) {
-          submit.disabled = false;
-          submit.textContent = "選び直して更新する";
-          showPostcard(updated.color);
+          renderAlreadyResponded(updated);
         })
         .catch(function () {
           submit.disabled = false;
