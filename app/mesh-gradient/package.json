@@ -1,0 +1,11 @@
+{
+  "name": "mesh-gradient",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.38.0"
+  }
+}

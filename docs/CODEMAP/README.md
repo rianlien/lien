@@ -20,8 +20,14 @@
 - `app/mesh-gradient/public/mesh-render.js` — Mesh Gradient描画エンジン（Oklab知覚補正ブレンド、ドメインワープ、
   ドリップ、紙質感）。発起人・回答者の両ページから共有。
 - `app/mesh-gradient/public/style.css` — 両ページ共通のスタイル。
-- `app/mesh-gradient/server.js` — 静的ファイル配信＋セッション/参加者のAPI（`.claude/launch.json`から起動）。
-- `app/mesh-gradient/data/` — 実行時データ（JSONファイル永続化）。git管理外（`app/mesh-gradient/.gitignore`）。
+- `app/mesh-gradient/lib/participants.js` — セッション/参加者の業務ロジック（永続化方式から独立、ローカル/Vercel共有）。
+- `app/mesh-gradient/lib/file-store.js` — ローカル開発用永続化（JSONファイル、セッションごとに1ファイル）。
+- `app/mesh-gradient/lib/kv-store.js` — Vercelデプロイ用永続化（Upstash Redis）。
+- `app/mesh-gradient/server.js` — ローカル開発用サーバー（静的ファイル配信＋API、`.claude/launch.json`から起動）。
+- `app/mesh-gradient/api/**` — Vercelデプロイ用serverless functions（同じAPIをVercel上で実行）。
+- `app/mesh-gradient/vercel.json` — Vercelのビルド設定（静的ファイルの出力先を`public/`に指定）。
+- `app/mesh-gradient/package.json` — 依存関係（`@upstash/redis`）。
+- `app/mesh-gradient/data/` — ローカル開発の実行時データ（JSONファイル永続化）。git管理外（`app/mesh-gradient/.gitignore`）。
 
 ## .claude
 
