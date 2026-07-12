@@ -160,6 +160,7 @@
       if (!sessionId || dragging) return;
       apiGet("/api/sessions/" + sessionId).then(function (res) {
         if (dragging) return; // 応答が返ってくるまでの間にドラッグが始まった場合は上書きしない
+        if (!res || !res.participants) return; // サーバー側でセッションが読めない場合は何もせず次回に任せる
         points = res.participants;
         if (flow === "idle" || flow === "awaiting-self-color") {
           renderList();
@@ -361,10 +362,30 @@
     canvas.style.cursor = "grab";
   });
 
+  // 保存されていたセッションIDがある前提で起動を試み、サーバー側にそのデータが無かった場合の復旧
+  function startFresh() {
+    localStorage.removeItem(LS_SESSION);
+    localStorage.removeItem(LS_SELF);
+    sessionId = null;
+    selfId = null;
+    points = [];
+    flow = "placing-self";
+    updateInstruction();
+    renderList();
+    render();
+  }
+
   // ---- 起動: 既存セッションがあれば復元、なければ自分の配置から開始 ----
   function boot() {
     if (sessionId) {
       apiGet("/api/sessions/" + sessionId).then(function (res) {
+        if (!res || !res.participants) {
+          // ブラウザに残っていたセッションIDが、サーバー側には存在しない
+          // （データをリセットした／別のサーバーインスタンスを指している等）。
+          // このまま進めると自分の位置すら選べない詰み状態になるため、新規セッションとして復旧する。
+          startFresh();
+          return;
+        }
         points = res.participants;
         var self = points.filter(function (p) { return p.isSelf; })[0];
         pendingSelf = self && !self.color ? self : null;
@@ -374,7 +395,7 @@
         renderList();
         render();
         startPolling();
-      });
+      }).catch(startFresh);
     } else {
       updateInstruction();
       renderList();
