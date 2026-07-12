@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>色グラデーションアプリ — Mesh Gradient 試作</title>
+<style>
+  :root {
+    color-scheme: light dark;
+  }
+  body {
+    font-family: -apple-system, "Hiragino Sans", sans-serif;
+    margin: 0;
+    display: flex;
+    min-height: 100vh;
+    background: #111;
+    color: #eee;
+  }
+  .canvas-pane {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    position: relative;
+  }
+  .canvas-wrap {
+    position: relative;
+    width: min(58vw, 56vh);
+    aspect-ratio: 2 / 3;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: 6px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    image-rendering: auto;
+    touch-action: none;
+    cursor: grab;
+    background: #f2ead6;
+  }
+  canvas.placing { cursor: crosshair; }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .pending-marker {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    margin-left: -14px;
+    margin-top: -14px;
+    border-radius: 50%;
+    border: 2px dashed #333;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.8);
+    box-sizing: border-box;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.15); }
+  }
+  .side {
+    width: 340px;
+    flex: 0 0 auto;
+    padding: 20px;
+    background: #1a1a1a;
+    overflow-y: auto;
+    border-left: 1px solid #333;
+  }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  .hint { font-size: 12px; color: #999; margin-bottom: 16px; line-height: 1.5; }
+  .instruction {
+    font-size: 13px;
+    background: #23233a;
+    border: 1px solid #3a3a5c;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+  .mode-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .mode-toggle button {
+    flex: 1;
+    padding: 8px;
+    font-size: 12px;
+    border-radius: 8px;
+    border: 1px solid #444;
+    background: #222;
+    color: #ccc;
+    cursor: pointer;
+  }
+  .mode-toggle button.active {
+    background: #4a4af0;
+    border-color: #4a4af0;
+    color: #fff;
+  }
+  .point-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid #2a2a2a;
+    font-size: 12px;
+  }
+  .point-row input[type="color"] {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    padding: 0;
+    background: none;
+  }
+  .point-row input[type="text"] {
+    width: 64px;
+    background: #222;
+    border: 1px solid #444;
+    color: #eee;
+    border-radius: 4px;
+    padding: 4px;
+    font-size: 12px;
+  }
+  .point-row .pos {
+    color: #888;
+    font-size: 11px;
+    flex: 1;
+  }
+  .point-row.pending {
+    color: #ffd166;
+  }
+  .reach-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 0 10px 40px;
+    border-bottom: 1px solid #2a2a2a;
+  }
+  .reach-row .reach-label {
+    font-size: 10px;
+    color: #777;
+    flex: 0 0 auto;
+  }
+  .reach-row input[type="range"] {
+    flex: 1 1 auto;
+    accent-color: #4a4af0;
+  }
+  .point-row.pending input[type="color"] {
+    animation: glow 1s ease-in-out infinite;
+    border-radius: 50%;
+  }
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 0 2px #ffd166; }
+    50% { box-shadow: 0 0 0 5px #ffd166; }
+  }
+  .point-row button.remove {
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .add-btn {
+    margin-top: 12px;
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px dashed #555;
+    background: none;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .add-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .self-marker { color: #ffd166; font-size: 11px; }
+</style>
+</head>
+<body>
+  <div class="canvas-pane">
+    <div class="canvas-wrap">
+      <canvas id="canvas" width="560" height="840"></canvas>
+      <div class="overlay" id="overlay"></div>
+    </div>
+  </div>
+  <div class="side">
+    <h1>Mesh Gradient 試作</h1>
+    <div class="hint">
+      「① 色だけをもらう → ② 人間関係を2D配置 → ③ Mesh Gradientになる」の視覚表現のみを
+      1画面で試せる試作版。友達へのURL送付・複数人での非同期回答フローはまだ実装していない
+      （このページ内で自分が全員分の位置・色を仮に置いて見た目を確認する用途）。
+      ポストカード比率（2:3）のキャンバスに、絵の具/インクをスケッチブックへ垂らしたような
+      モーフグラデーションを描く。井戸（色を置いた点）はどれだけ混ざり合ってもよい設計。
+      「naive平均」と「知覚補正」で、色のにごり方の違いを見比べられる。
+    </div>
+    <div class="instruction" id="instruction"></div>
+    <div class="mode-toggle">
+      <button id="modeNaive">naive平均</button>
+      <button id="modePerceptual" class="active">知覚補正</button>
+    </div>
+    <div id="pointList"></div>
+    <button class="add-btn" id="addPoint">+ 友達を追加</button>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- state ----
+  var points = []; // 最初はまっさら。自分の位置を決めるところから始まる。
+  var blendMode = "perceptual"; // "naive" | "perceptual"（色の混ぜ方）
+  var nextId = 1;
+  var DEFAULT_REACH = 0.38; // 井戸は混ざり切ってよい前提なので、初期値からある程度重なりやすくしておく
+
+  // flow: 今どの手順にいるか
+  //  - "placing-self":    自分の位置をキャンバス上で決める段階
+  //  - "awaiting-color":  位置は決めたが、色をまだ選んでいない段階（pendingPointが対象）
+  //  - "idle":            次の操作待ち（+友達を追加、ドラッグでの微調整、色の変更ができる）
+  //  - "placing-friend":  新しい友達の位置をキャンバス上で決める段階
+  var flow = "placing-self";
+  var pendingPoint = null;
+
+  var canvas = document.getElementById("canvas");
+  var ctx = canvas.getContext("2d", { willReadFrequently: true });
+  // 実描画解像度（2:3を維持）。荒く計算し、canvas自体のCSSスケールで滑らかに見せる。
+  var RES_W = 150, RES_H = 225;
+  var off = document.createElement("canvas");
+  off.width = RES_W;
+  off.height = RES_H;
+  var offCtx = off.getContext("2d");
+  var overlay = document.getElementById("overlay");
+  var instructionEl = document.getElementById("instruction");
+  var addBtn = document.getElementById("addPoint");
+
+  // ---- 紙（スケッチブック）の下地色。モダンな中性トーン（黄味/茶味を抑えたニュートラルグレー寄り）----
+  var PAPER_RGB = [240, 240, 236];
+
+  // ---- color conversion ----
+  function hexToRgb(hex) {
+    var m = hex.replace("#", "");
+    var r = parseInt(m.substring(0, 2), 16);
+    var g = parseInt(m.substring(2, 4), 16);
+    var b = parseInt(m.substring(4, 6), 16);
+    return [r, g, b];
+  }
+
+  // Oklab変換（Björn Ottosson氏の標準式）。L,a,bはすべてCartesian座標であり、
+  // HSLの「色相の角度」のような、彩度ゼロで角度が不定になる特異点が存在しない。
+  // そのため複数色を混ぜても、どんな組み合わせでも常になめらかに変化する。
+  function srgbToLinear(c) {
+    c /= 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+  function linearToSrgb(c) {
+    var v = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return Math.max(0, Math.min(255, Math.round(v * 255)));
+  }
+  function rgbToOklab(r, g, b) {
+    var lr = srgbToLinear(r), lg = srgbToLinear(g), lb = srgbToLinear(b);
+    var l = 0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb;
+    var m = 0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb;
+    var s = 0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb;
+    var l_ = Math.cbrt(l), m_ = Math.cbrt(m), s_ = Math.cbrt(s);
+    return [
+      0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+      1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+      0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+    ];
+  }
+  function oklabToRgb(L, a, b2) {
+    var l_ = L + 0.3963377774 * a + 0.2158037573 * b2;
+    var m_ = L - 0.1055613458 * a - 0.0638541728 * b2;
+    var s_ = L - 0.0894841775 * a - 1.2914855480 * b2;
+    var l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+    var lr = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+    var lg = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+    var lb = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+    return [linearToSrgb(lr), linearToSrgb(lg), linearToSrgb(lb)];
+  }
+
+  // ---- noise（ドメインワープ／垂れのふらつきに使う。決定論的で、レンダー毎に再構築しても揺れない） ----
+  function hash2(x, y, seed) {
+    var s = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453;
+    return s - Math.floor(s);
+  }
+  function hash01(n) {
+    var s = Math.sin(n) * 43758.5453;
+    return s - Math.floor(s);
+  }
+  function valueNoise(x, y, seed) {
+    var xi = Math.floor(x), yi = Math.floor(y);
+    var xf = x - xi, yf = y - yi;
+    var u = xf * xf * (3 - 2 * xf);
+    var v = yf * yf * (3 - 2 * yf);
+    var a = hash2(xi, yi, seed);
+    var b = hash2(xi + 1, yi, seed);
+    var c = hash2(xi, yi + 1, seed);
+    var d = hash2(xi + 1, yi + 1, seed);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  function fbm(x, y, seed) {
+    var total = 0, amp = 0.5, freq = 1, maxAmp = 0;
+    for (var i = 0; i < 3; i++) {
+      total += valueNoise(x * freq, y * freq, seed + i * 17) * amp;
+      maxAmp += amp;
+      amp *= 0.5;
+      freq *= 2.1;
+    }
+    return total / maxAmp; // 0..1
+  }
+  function hashStringToNum(str) {
+    var h = 0;
+    for (var i = 0; i < str.length; i++) {
+      h = (h * 31 + str.charCodeAt(i)) >>> 0;
+    }
+    return h % 10000;
+  }
+
+  // ---- ドメインワープ（にじみ・不定形な輪郭を作る、空間そのものを歪める共通ノイズ場） ----
+  var WARP_FREQ = 0.05;
+  var WARP_AMP = 9; // RESピクセル単位の歪み量
+
+  // ---- 垂れ（drip trail）：各点から重力方向（下）へ、絵の具/インクが垂れる軌跡を作る ----
+  function computeDrip(px, py, reachPx, seed) {
+    var segs = 10; // 区間を細かくして垂れを途切れさせない（reachの減衰より間隔を狭く保つのが連続性の鍵）
+    var lenScale = 1.6 + hash01(seed * 0.013) * 1.6; // reachの1.6〜3.2倍まで垂れる
+    var dripLen = reachPx * lenScale;
+    var wobbleAmp = reachPx * 0.55;
+    var trail = [];
+    for (var i = 1; i <= segs; i++) {
+      var t = i / segs;
+      var wobble = fbm(t * 4 + seed * 0.011, seed * 0.7, seed) - 0.5;
+      var xx = px + wobble * wobbleAmp * (0.4 + t);
+      var yy = py + dripLen * t;
+      var rr = Math.max(reachPx * (1 - t * 0.5), reachPx * 0.25); // 先端に向かって細くなるが、隣接区間と重なる太さは保つ
+      var ws = Math.pow(1 - t, 1.3); // 先端に向かって薄くなる
+      trail.push({ x: xx, y: yy, reach: rr, weightScale: ws });
+    }
+    return trail;
+  }
+
+  // ---- 紙の粒状テクスチャ＋ビネット（一度だけ生成し、毎回乗算合成する） ----
+  function buildGrainTexture(w, h) {
+    var gc = document.createElement("canvas");
+    gc.width = w;
+    gc.height = h;
+    var gctx = gc.getContext("2d");
+    gctx.fillStyle = "#ffffff";
+    gctx.fillRect(0, 0, w, h);
+
+    var speckleCount = Math.floor(w * h * 0.05);
+    for (var i = 0; i < speckleCount; i++) {
+      var x = Math.random() * w, y = Math.random() * h;
+      var v = 190 + Math.random() * 55;
+      var a = 0.03 + Math.random() * 0.05;
+      gctx.fillStyle = "rgba(" + (v * 0.62 | 0) + "," + (v * 0.62 | 0) + "," + (v * 0.6 | 0) + "," + a + ")";
+      gctx.fillRect(x, y, 1, 1);
+    }
+
+    var fiberCount = Math.floor((w + h) * 0.35);
+    for (i = 0; i < fiberCount; i++) {
+      var fx = Math.random() * w, fy = Math.random() * h;
+      var len = 4 + Math.random() * 10;
+      var ang = Math.random() * Math.PI;
+      gctx.strokeStyle = "rgba(120,120,118," + (0.02 + Math.random() * 0.04) + ")";
+      gctx.lineWidth = 1;
+      gctx.beginPath();
+      gctx.moveTo(fx, fy);
+      gctx.lineTo(fx + Math.cos(ang) * len, fy + Math.sin(ang) * len);
+      gctx.stroke();
+    }
+
+    var grad = gctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.78);
+    grad.addColorStop(0, "rgba(255,255,255,1)");
+    grad.addColorStop(1, "rgba(206,207,202,1)");
+    gctx.globalCompositeOperation = "multiply";
+    gctx.fillStyle = grad;
+    gctx.fillRect(0, 0, w, h);
+    return gc;
+  }
+  var grainCanvas = buildGrainTexture(canvas.width, canvas.height);
+
+  // ---- render（点が0個でも常に紙のベースを描く。井戸は何個重なっても混ざり切ってよい） ----
+  var INK_GAIN = 1.5; // 総重み→インク濃度への変換係数。大きいほど早く紙が見えなくなる
+
+  function coloredPoints() {
+    return points.filter(function (p) { return !!p.color; });
+  }
+
+  function render() {
+    var confirmed = coloredPoints();
+    var n = confirmed.length;
+    var colorsRgb = confirmed.map(function (p) { return hexToRgb(p.color); });
+    var colorsOklab = colorsRgb.map(function (c) {
+      var lab = rgbToOklab(c[0], c[1], c[2]);
+      return { L: lab[0], a: lab[1], b: lab[2], chroma: Math.hypot(lab[1], lab[2]) };
+    });
+    var minRes = Math.min(RES_W, RES_H);
+    var px = confirmed.map(function (p) { return p.x * RES_W; });
+    var py = confirmed.map(function (p) { return p.y * RES_H; });
+    var reachPx = confirmed.map(function (p) { return (p.reach || DEFAULT_REACH) * minRes; });
+    var drips = confirmed.map(function (p, i) {
+      return computeDrip(px[i], py[i], reachPx[i], hashStringToNum(p.id));
+    });
+
+    var imgData = offCtx.createImageData(RES_W, RES_H);
+    var data = imgData.data;
+
+    for (var y = 0; y < RES_H; y++) {
+      for (var x = 0; x < RES_W; x++) {
+        var nx = fbm(x * WARP_FREQ, y * WARP_FREQ, 11) - 0.5;
+        var ny = fbm(x * WARP_FREQ + 40.7, y * WARP_FREQ + 19.3, 23) - 0.5;
+        var wx = x + nx * WARP_AMP;
+        var wy = y + ny * WARP_AMP;
+
+        var rgb = PAPER_RGB;
+        if (n > 0) {
+          var weights = new Array(n);
+          var totalWeight = 0;
+          for (var i = 0; i < n; i++) {
+            var dx = wx - px[i], dy = wy - py[i];
+            var g = Math.exp(-(dx * dx + dy * dy) / (2 * reachPx[i] * reachPx[i]));
+            var trail = drips[i];
+            for (var k = 0; k < trail.length; k++) {
+              var t = trail[k];
+              var tdx = wx - t.x, tdy = wy - t.y;
+              g += Math.exp(-(tdx * tdx + tdy * tdy) / (2 * t.reach * t.reach)) * t.weightScale;
+            }
+            weights[i] = g;
+            totalWeight += g;
+          }
+          var wsum = totalWeight > 0 ? totalWeight : 1;
+          var blendRgb;
+          if (n === 1) {
+            blendRgb = colorsRgb[0];
+          } else if (blendMode === "naive") {
+            var r = 0, gg = 0, bch = 0;
+            for (i = 0; i < n; i++) {
+              var w = weights[i] / wsum;
+              r += colorsRgb[i][0] * w;
+              gg += colorsRgb[i][1] * w;
+              bch += colorsRgb[i][2] * w;
+            }
+            blendRgb = [r, gg, bch];
+          } else {
+            var L = 0, a = 0, bb = 0, chromaSum = 0;
+            for (i = 0; i < n; i++) {
+              var w2 = weights[i] / wsum;
+              var lab = colorsOklab[i];
+              L += lab.L * w2;
+              a += lab.a * w2;
+              bb += lab.b * w2;
+              chromaSum += lab.chroma * w2;
+            }
+            var mixedChroma = Math.hypot(a, bb);
+            if (mixedChroma > 0.0001 && chromaSum > mixedChroma) {
+              var stretch = Math.min(2.2, chromaSum / mixedChroma);
+              a *= stretch;
+              bb *= stretch;
+            }
+            blendRgb = oklabToRgb(L, a, bb);
+          }
+          var ink = 1 - Math.exp(-totalWeight * INK_GAIN);
+          rgb = [
+            PAPER_RGB[0] * (1 - ink) + blendRgb[0] * ink,
+            PAPER_RGB[1] * (1 - ink) + blendRgb[1] * ink,
+            PAPER_RGB[2] * (1 - ink) + blendRgb[2] * ink
+          ];
+        }
+        var idx = (y * RES_W + x) * 4;
+        data[idx] = rgb[0];
+        data[idx + 1] = rgb[1];
+        data[idx + 2] = rgb[2];
+        data[idx + 3] = 255;
+      }
+    }
+    offCtx.putImageData(imgData, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.drawImage(grainCanvas, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    updateOverlay();
+  }
+
+  // 色未確定の点（pendingPoint）だけ、キャンバス上に点滅するマーカーで場所を示す
+  function updateOverlay() {
+    overlay.innerHTML = "";
+    if (pendingPoint) {
+      var marker = document.createElement("div");
+      marker.className = "pending-marker";
+      marker.style.left = (pendingPoint.x * 100) + "%";
+      marker.style.top = (pendingPoint.y * 100) + "%";
+      overlay.appendChild(marker);
+    }
+  }
+
+  // ---- flow: 手順の指示文とUIの有効/無効を更新 ----
+  function updateInstruction() {
+    var text;
+    if (flow === "placing-self") {
+      text = "① キャンバスをクリックして、自分の位置を決めてください。";
+    } else if (flow === "placing-friend") {
+      text = "③ キャンバスをクリックして、友達の位置を決めてください。";
+    } else if (flow === "awaiting-color" && pendingPoint && pendingPoint.fixed) {
+      text = "② 自分を表す色を選んでください（下の点滅しているスワッチをクリック）。";
+    } else if (flow === "awaiting-color") {
+      text = "④ もらった色を選んでください（下の点滅しているスワッチをクリック）。";
+    } else {
+      text = "「+ 友達を追加」から、もらった色を1人ずつ置いていきましょう。";
+    }
+    instructionEl.textContent = text;
+    canvas.classList.toggle("placing", flow === "placing-self" || flow === "placing-friend");
+    addBtn.disabled = flow !== "idle";
+  }
+
+  function startPlacingSelf() {
+    flow = "placing-self";
+    updateInstruction();
+  }
+
+  function placePoint(u, isSelf) {
+    var point = isSelf
+      ? { id: "self", label: "自分", x: u.x, y: u.y, color: null, fixed: true, reach: DEFAULT_REACH }
+      : { id: "p" + nextId++, label: "友達" + nextId, x: u.x, y: u.y, color: null, reach: DEFAULT_REACH };
+    points.push(point);
+    pendingPoint = point;
+    flow = "awaiting-color";
+    updateInstruction();
+    renderList();
+    render();
+    // 位置を決めた直後、サイドバーに表示された「この点の色スワッチ」を自動でクリックしてみる。
+    // 画面外に隠した要素と違い、これは実際にレイアウトされた見える要素なので、
+    // ブラウザがネイティブのカラーピッカーを開いてくれる可能性が高い。
+    // 失敗しても、スワッチ自体は常に有効・点滅表示されているので、ユーザーが直接クリックすれば選べる（詰まない）。
+    var input = document.getElementById("color-" + point.id);
+    if (input) {
+      try { input.click(); } catch (e) { /* 自動オープンに失敗しても手動クリックの導線は生きている */ }
+    }
+  }
+
+  // ---- UI: point list ----
+  var listEl = document.getElementById("pointList");
+  function renderList() {
+    listEl.innerHTML = "";
+    points.forEach(function (p) {
+      var row = document.createElement("div");
+      row.className = "point-row" + (p.color ? "" : " pending");
+
+      var colorInput = document.createElement("input");
+      colorInput.type = "color";
+      colorInput.id = "color-" + p.id;
+      colorInput.value = p.color || "#888888";
+      // input: ピッカー操作中に連続発火する（ドラッグ中の途中経過）。
+      // ここでDOMを再構築すると、ピッカーの土台ごと消えて途中で閉じてしまうので、
+      // 色のライブプレビューだけ行い、リスト自体は作り直さない。
+      colorInput.addEventListener("input", function () {
+        p.color = colorInput.value;
+        render();
+      });
+      // change: ピッカーを閉じた＝色が確定したタイミングでのみ発火。
+      // ここで初めてpending解除・フロー更新・リストの再構築を行う。
+      colorInput.addEventListener("change", function () {
+        p.color = colorInput.value;
+        if (pendingPoint === p) {
+          pendingPoint = null;
+          flow = "idle";
+          updateInstruction();
+        }
+        renderList();
+        render();
+      });
+
+      var labelInput = document.createElement("input");
+      labelInput.type = "text";
+      labelInput.value = p.label;
+      labelInput.addEventListener("input", function () {
+        p.label = labelInput.value;
+      });
+
+      var posSpan = document.createElement("span");
+      posSpan.className = "pos";
+      posSpan.textContent = !p.color
+        ? "色を選択中…"
+        : (p.fixed ? "自分" : "(" + p.x.toFixed(2) + ", " + p.y.toFixed(2) + ")");
+
+      row.appendChild(colorInput);
+      row.appendChild(labelInput);
+      row.appendChild(posSpan);
+
+      if (p.fixed) {
+        var tag = document.createElement("span");
+        tag.className = "self-marker";
+        tag.textContent = "★";
+        row.appendChild(tag);
+      } else {
+        var removeBtn = document.createElement("button");
+        removeBtn.className = "remove";
+        removeBtn.textContent = "×";
+        removeBtn.addEventListener("click", function () {
+          points = points.filter(function (pt) { return pt.id !== p.id; });
+          if (pendingPoint === p) {
+            pendingPoint = null;
+            flow = "idle";
+            updateInstruction();
+          }
+          renderList();
+          render();
+        });
+        row.appendChild(removeBtn);
+      }
+
+      listEl.appendChild(row);
+
+      // 影響範囲（reach）：値が大きいほど遠くまで柔らかく効き、小さいほどその人の色が狭い範囲に強く主張する。
+      // 井戸同士が混ざり切ってもよい前提なので、上限は広め（0.95）にしてある。
+      var reachRow = document.createElement("div");
+      reachRow.className = "reach-row";
+      var reachLabel = document.createElement("span");
+      reachLabel.className = "reach-label";
+      reachLabel.textContent = "影響範囲";
+      var reachInput = document.createElement("input");
+      reachInput.type = "range";
+      reachInput.min = "0.08";
+      reachInput.max = "0.95";
+      reachInput.step = "0.01";
+      reachInput.value = p.reach || DEFAULT_REACH;
+      reachInput.addEventListener("input", function () {
+        p.reach = parseFloat(reachInput.value);
+        render();
+      });
+      reachRow.appendChild(reachLabel);
+      reachRow.appendChild(reachInput);
+      listEl.appendChild(reachRow);
+    });
+  }
+
+  addBtn.addEventListener("click", function () {
+    if (flow !== "idle") return;
+    flow = "placing-friend";
+    updateInstruction();
+  });
+
+  // ---- UI: mode toggle（naive平均 / 知覚補正）----
+  var btnNaive = document.getElementById("modeNaive");
+  var btnPerceptual = document.getElementById("modePerceptual");
+  function setBlendMode(m) {
+    blendMode = m;
+    btnNaive.classList.toggle("active", m === "naive");
+    btnPerceptual.classList.toggle("active", m === "perceptual");
+    render();
+  }
+  btnNaive.addEventListener("click", function () { setBlendMode("naive"); });
+  btnPerceptual.addEventListener("click", function () { setBlendMode("perceptual"); });
+
+  // ---- UI: キャンバス操作（配置 or ドラッグ）----
+  var dragging = null;
+  function canvasPosToUnit(clientX, clientY) {
+    var rect = canvas.getBoundingClientRect();
+    return {
+      x: Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)),
+      y: Math.min(1, Math.max(0, (clientY - rect.top) / rect.height))
+    };
+  }
+  canvas.addEventListener("pointerdown", function (e) {
+    var u = canvasPosToUnit(e.clientX, e.clientY);
+
+    if (flow === "placing-self") {
+      placePoint(u, true);
+      return;
+    }
+    if (flow === "placing-friend") {
+      placePoint(u, false);
+      return;
+    }
+    if (flow !== "idle") return; // 色選択待ちの間は操作しない
+
+    // idle中は、既存の色確定済みの点をドラッグして距離感を微調整できる
+    var closest = null, closestDist = Infinity;
+    points.forEach(function (p) {
+      if (!p.color) return;
+      var d = Math.hypot(p.x - u.x, p.y - u.y);
+      if (d < closestDist) { closestDist = d; closest = p; }
+    });
+    if (closest && closestDist < 0.12) {
+      dragging = closest;
+      canvas.style.cursor = "grabbing";
+    }
+  });
+  window.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+    var u = canvasPosToUnit(e.clientX, e.clientY);
+    dragging.x = u.x;
+    dragging.y = u.y;
+    renderList();
+    render();
+  });
+  window.addEventListener("pointerup", function () {
+    dragging = null;
+    canvas.style.cursor = "grab";
+  });
+
+  updateInstruction();
+  renderList();
+  render();
+})();
+</script>
+</body>
+</html>
