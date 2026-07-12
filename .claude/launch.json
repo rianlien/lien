@@ -4,7 +4,7 @@
     {
       "name": "mesh-gradient-spike",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["/Users/rian-ishikawa/Desktop/Claude/myplanet/tmp/prototype/mesh-gradient-spike/server.js"],
+      "runtimeArgs": ["${workspaceFolder}/app/mesh-gradient/server.js"],
       "port": 8743
     }
   ]
