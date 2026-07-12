@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>色グラデーションアプリ — Mesh Gradient 試作</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="canvas-pane">
+    <div class="canvas-wrap">
+      <canvas id="canvas" width="560" height="840"></canvas>
+      <div class="overlay" id="overlay"></div>
+    </div>
+  </div>
+  <div class="side">
+    <h1>Mesh Gradient 試作</h1>
+    <div class="hint">
+      自分の位置を決めたら色を選び、友達を追加して招待リンクを発行する。友達がリンクを開いて色を選ぶと、
+      このページに自動で反映される（数秒おきに確認）。友達には自分の位置・他の友達の色は一切見せない。
+      ポストカード比率（2:3）のキャンバスに、絵の具/インクをスケッチブックへ垂らしたようなモーフグラデーションを描く。
+      井戸（色を置いた点）はどれだけ混ざり合ってもよい設計。
+    </div>
+    <div class="instruction" id="instruction"></div>
+    <div class="mode-toggle">
+      <button id="modeNaive">naive平均</button>
+      <button id="modePerceptual" class="active">知覚補正</button>
+    </div>
+    <div id="pointList"></div>
+    <button class="add-btn" id="addPoint">+ 友達を追加</button>
+  </div>
+
+<script src="/mesh-render.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var LS_SESSION = "meshgrad_session_id";
+  var LS_SELF = "meshgrad_self_id";
+
+  // ---- state ----
+  var sessionId = localStorage.getItem(LS_SESSION);
+  var selfId = localStorage.getItem(LS_SELF);
+  var points = []; // サーバーのparticipantsをそのまま反映するローカルミラー
+  var blendMode = "perceptual"; // "naive" | "perceptual"
+  var nextFriendNum = 1;
+
+  // flow:
+  //  - "placing-self":       自分の位置をキャンバス上で決める段階（セッション未作成）
+  //  - "awaiting-self-color": 自分の位置は決めたが、自分の色をまだ選んでいない段階
+  //  - "idle":                通常操作（友達追加・ドラッグ・色/影響範囲の調整）
+  //  - "placing-friend":      新しい友達の位置をキャンバス上で決める段階
+  var flow = sessionId ? "idle" : "placing-self";
+  var pendingSelf = null; // awaiting-self-color の間だけ使う
+  var dragging = null;
+  var pollTimer = null;
+
+  var canvas = document.getElementById("canvas");
+  var overlay = document.getElementById("overlay");
+  var instructionEl = document.getElementById("instruction");
+  var addBtn = document.getElementById("addPoint");
+  var listEl = document.getElementById("pointList");
+
+  function render() {
+    MeshRender.render(canvas, points, blendMode);
+    updateOverlay();
+  }
+
+  function updateOverlay() {
+    overlay.innerHTML = "";
+    if (flow === "awaiting-self-color" && pendingSelf) {
+      var marker = document.createElement("div");
+      marker.className = "pending-marker";
+      marker.style.left = (pendingSelf.x * 100) + "%";
+      marker.style.top = (pendingSelf.y * 100) + "%";
+      overlay.appendChild(marker);
+    }
+  }
+
+  function updateInstruction() {
+    var text;
+    if (flow === "placing-self") {
+      text = "① キャンバスをクリックして、自分の位置を決めてください。";
+    } else if (flow === "awaiting-self-color") {
+      text = "② 自分を表す色を選んでください（下の点滅しているスワッチをクリック）。";
+    } else if (flow === "placing-friend") {
+      text = "③ キャンバスをクリックして、友達の位置を決めてください。";
+    } else {
+      text = "「+ 友達を追加」から友達を配置し、発行された招待リンクを送りましょう。";
+    }
+    instructionEl.textContent = text;
+    canvas.classList.toggle("placing", flow === "placing-self" || flow === "placing-friend");
+    addBtn.disabled = flow !== "idle";
+  }
+
+  // ---- API ----
+  function apiPost(path, body) {
+    return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); });
+  }
+  function apiPatch(path, body) {
+    return fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); });
+  }
+  function apiGet(path) {
+    return fetch(path).then(function (r) { return r.json(); });
+  }
+
+  function inviteUrl(participantId) {
+    return location.origin + "/reply.html?s=" + encodeURIComponent(sessionId) + "&p=" + encodeURIComponent(participantId);
+  }
+
+  // ---- キャンバス座標変換 ----
+  function canvasPosToUnit(clientX, clientY) {
+    var rect = canvas.getBoundingClientRect();
+    return {
+      x: Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)),
+      y: Math.min(1, Math.max(0, (clientY - rect.top) / rect.height))
+    };
+  }
+
+  // ---- 配置 ----
+  function placeSelf(u) {
+    apiPost("/api/sessions", { x: u.x, y: u.y, label: "自分" }).then(function (res) {
+      sessionId = res.sessionId;
+      selfId = res.selfId;
+      localStorage.setItem(LS_SESSION, sessionId);
+      localStorage.setItem(LS_SELF, selfId);
+      var selfPoint = { id: selfId, label: "自分", x: u.x, y: u.y, color: null, reach: MeshRender.DEFAULT_REACH, isSelf: true, respondedAt: null };
+      points = [selfPoint];
+      pendingSelf = selfPoint;
+      flow = "awaiting-self-color";
+      updateInstruction();
+      renderList();
+      render();
+      startPolling();
+      var input = document.getElementById("color-" + selfId);
+      if (input) { try { input.click(); } catch (e) { /* 手動クリックの導線は残っている */ } }
+    });
+  }
+
+  function placeFriend(u) {
+    var label = "友達" + nextFriendNum;
+    apiPost("/api/sessions/" + sessionId + "/participants", { x: u.x, y: u.y, label: label }).then(function (res) {
+      nextFriendNum++;
+      points.push({
+        id: res.participantId, label: label, x: u.x, y: u.y,
+        color: null, reach: MeshRender.DEFAULT_REACH, isSelf: false, respondedAt: null
+      });
+      flow = "idle";
+      updateInstruction();
+      renderList();
+      render();
+    });
+  }
+
+  // ---- ポーリング（友達の回答を自動反映） ----
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(function () {
+      if (!sessionId || dragging) return;
+      apiGet("/api/sessions/" + sessionId).then(function (res) {
+        if (dragging) return; // 応答が返ってくるまでの間にドラッグが始まった場合は上書きしない
+        points = res.participants;
+        if (flow === "idle" || flow === "awaiting-self-color") {
+          renderList();
+          render();
+        }
+      });
+    }, 3000);
+  }
+
+  // ---- UI: 一覧 ----
+  function renderList() {
+    listEl.innerHTML = "";
+    points.forEach(function (p) {
+      var row = document.createElement("div");
+      row.className = "point-row" + (p.isSelf && !p.color ? " pending" : "") + (!p.isSelf && p.color ? " responded" : "");
+
+      if (p.isSelf) {
+        var colorInput = document.createElement("input");
+        colorInput.type = "color";
+        colorInput.id = "color-" + p.id;
+        colorInput.value = p.color || "#888888";
+        colorInput.addEventListener("input", function () {
+          p.color = colorInput.value;
+          render();
+        });
+        colorInput.addEventListener("change", function () {
+          apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { color: colorInput.value }).then(function () {
+            // pollingでpointsが丸ごと差し替わるため、pendingSelfとの同一性ではなくidで判定する
+            if (flow === "awaiting-self-color") {
+              pendingSelf = null;
+              flow = "idle";
+              updateInstruction();
+            }
+            renderList();
+            render();
+          });
+        });
+        row.appendChild(colorInput);
+      } else {
+        var swatch = document.createElement("div");
+        swatch.style.width = "32px";
+        swatch.style.height = "32px";
+        swatch.style.borderRadius = "6px";
+        swatch.style.background = p.color || "#e7e2d4";
+        swatch.style.border = p.color ? "none" : "1px dashed #d9d2bf";
+        row.appendChild(swatch);
+      }
+
+      var labelInput = document.createElement("input");
+      labelInput.type = "text";
+      labelInput.value = p.label;
+      labelInput.addEventListener("input", function () { p.label = labelInput.value; });
+      labelInput.addEventListener("change", function () {
+        apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { label: labelInput.value });
+      });
+      row.appendChild(labelInput);
+
+      var posSpan = document.createElement("span");
+      posSpan.className = "pos";
+      if (p.isSelf) {
+        posSpan.textContent = p.color ? "自分" : "色を選択中…";
+      } else {
+        posSpan.textContent = p.color ? "回答済み" : "招待リンク未回答";
+      }
+      row.appendChild(posSpan);
+
+      if (p.isSelf) {
+        var tag = document.createElement("span");
+        tag.className = "self-marker";
+        tag.textContent = "★";
+        row.appendChild(tag);
+      } else {
+        var removeBtn = document.createElement("button");
+        removeBtn.className = "remove";
+        removeBtn.textContent = "×";
+        removeBtn.addEventListener("click", function () {
+          fetch("/api/sessions/" + sessionId + "/participants/" + p.id, { method: "DELETE" }).then(function () {
+            points = points.filter(function (pt) { return pt.id !== p.id; });
+            renderList();
+            render();
+          });
+        });
+        row.appendChild(removeBtn);
+      }
+      listEl.appendChild(row);
+
+      if (!p.isSelf) {
+        var inviteRow = document.createElement("div");
+        inviteRow.className = "invite-row";
+        var urlInput = document.createElement("input");
+        urlInput.type = "text";
+        urlInput.readOnly = true;
+        urlInput.value = inviteUrl(p.id);
+        var copyBtn = document.createElement("button");
+        copyBtn.textContent = "コピー";
+        copyBtn.addEventListener("click", function () {
+          navigator.clipboard.writeText(urlInput.value).then(function () {
+            copyBtn.textContent = "コピーした";
+            setTimeout(function () { copyBtn.textContent = "コピー"; }, 1500);
+          });
+        });
+        inviteRow.appendChild(urlInput);
+        inviteRow.appendChild(copyBtn);
+        listEl.appendChild(inviteRow);
+      }
+
+      var reachRow = document.createElement("div");
+      reachRow.className = "reach-row";
+      var reachLabel = document.createElement("span");
+      reachLabel.className = "reach-label";
+      reachLabel.textContent = "影響範囲";
+      var reachInput = document.createElement("input");
+      reachInput.type = "range";
+      reachInput.min = "0.08";
+      reachInput.max = "0.95";
+      reachInput.step = "0.01";
+      reachInput.value = p.reach || MeshRender.DEFAULT_REACH;
+      reachInput.addEventListener("input", function () {
+        p.reach = parseFloat(reachInput.value);
+        render();
+      });
+      reachInput.addEventListener("change", function () {
+        apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { reach: p.reach });
+      });
+      reachRow.appendChild(reachLabel);
+      reachRow.appendChild(reachInput);
+      listEl.appendChild(reachRow);
+    });
+  }
+
+  addBtn.addEventListener("click", function () {
+    if (flow !== "idle") return;
+    flow = "placing-friend";
+    updateInstruction();
+  });
+
+  var btnNaive = document.getElementById("modeNaive");
+  var btnPerceptual = document.getElementById("modePerceptual");
+  function setBlendMode(m) {
+    blendMode = m;
+    btnNaive.classList.toggle("active", m === "naive");
+    btnPerceptual.classList.toggle("active", m === "perceptual");
+    render();
+  }
+  btnNaive.addEventListener("click", function () { setBlendMode("naive"); });
+  btnPerceptual.addEventListener("click", function () { setBlendMode("perceptual"); });
+
+  canvas.addEventListener("pointerdown", function (e) {
+    var u = canvasPosToUnit(e.clientX, e.clientY);
+    if (flow === "placing-self") { placeSelf(u); return; }
+    if (flow === "placing-friend") { placeFriend(u); return; }
+    if (flow !== "idle") return;
+
+    var closest = null, closestDist = Infinity;
+    points.forEach(function (p) {
+      var d = Math.hypot(p.x - u.x, p.y - u.y);
+      if (d < closestDist) { closestDist = d; closest = p; }
+    });
+    if (closest && closestDist < 0.12) {
+      dragging = closest;
+      canvas.style.cursor = "grabbing";
+    }
+  });
+  window.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+    var u = canvasPosToUnit(e.clientX, e.clientY);
+    dragging.x = u.x;
+    dragging.y = u.y;
+    renderList();
+    render();
+  });
+  window.addEventListener("pointerup", function () {
+    if (dragging) {
+      apiPatch("/api/sessions/" + sessionId + "/participants/" + dragging.id, { x: dragging.x, y: dragging.y });
+    }
+    dragging = null;
+    canvas.style.cursor = "grab";
+  });
+
+  // ---- 起動: 既存セッションがあれば復元、なければ自分の配置から開始 ----
+  function boot() {
+    if (sessionId) {
+      apiGet("/api/sessions/" + sessionId).then(function (res) {
+        points = res.participants;
+        var self = points.filter(function (p) { return p.isSelf; })[0];
+        pendingSelf = self && !self.color ? self : null;
+        flow = pendingSelf ? "awaiting-self-color" : "idle";
+        nextFriendNum = points.length; // ラベルの重複を避けるための簡易カウンタ
+        updateInstruction();
+        renderList();
+        render();
+        startPolling();
+      });
+    } else {
+      updateInstruction();
+      renderList();
+      render();
+    }
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
