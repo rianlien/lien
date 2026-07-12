@@ -176,7 +176,7 @@
       var row = document.createElement("div");
       row.className = "point-row" + (p.isSelf && !p.color ? " pending" : "") + (!p.isSelf && p.color ? " responded" : "");
 
-      if (p.isSelf) {
+      if (p.isSelf && !p.color) {
         var colorInput = document.createElement("input");
         colorInput.type = "color";
         colorInput.id = "color-" + p.id;
@@ -198,6 +198,14 @@
           });
         });
         row.appendChild(colorInput);
+      } else if (p.isSelf) {
+        // 自分も、一度色を決めたら発起人自身も含めてロック対象（色を見てから調整するバイアスを防ぐため）
+        var selfSwatch = document.createElement("div");
+        selfSwatch.style.width = "32px";
+        selfSwatch.style.height = "32px";
+        selfSwatch.style.borderRadius = "6px";
+        selfSwatch.style.background = p.color;
+        row.appendChild(selfSwatch);
       } else {
         var swatch = document.createElement("div");
         swatch.style.width = "32px";
@@ -273,10 +281,10 @@
       reachLabel.textContent = "影響範囲";
       reachRow.appendChild(reachLabel);
 
-      // 友達が回答済みになった後は、影響範囲を固定する（色を見てから強さを調整できてしまうと、
+      // 色を一度でも決めたら、発起人自身も含めて影響範囲を固定する（色を見てから強さを調整できてしまうと、
       // 位置決め時点の関係性の感覚ではなく色への印象で結果を歪めてしまうため）。
-      var friendLocked = !p.isSelf && !!p.color;
-      if (friendLocked) {
+      var locked = !!p.color;
+      if (locked) {
         var reachLocked = document.createElement("span");
         reachLocked.className = "reach-label";
         reachLocked.textContent = "固定済み（" + (p.reach || MeshRender.DEFAULT_REACH).toFixed(2) + "）";
@@ -324,10 +332,11 @@
     if (flow === "placing-friend") { placeFriend(u); return; }
     if (flow !== "idle") return;
 
-    // 回答済みの友達は、色を見てから位置を動かせてしまうバイアスを防ぐためドラッグ対象から外す（reach同様のロック）
+    // 色を一度でも決めた点は、発起人自身も含めてドラッグ対象から外す（色を見てから位置を動かせてしまう
+    // バイアスを防ぐため。reach・colorのロックと同条件）
     var closest = null, closestDist = Infinity;
     points.forEach(function (p) {
-      if (!p.isSelf && p.color) return;
+      if (p.color) return;
       var d = Math.hypot(p.x - u.x, p.y - u.y);
       if (d < closestDist) { closestDist = d; closest = p; }
     });
