@@ -6,15 +6,22 @@
 
 - `docs/raw-rfp/color-gradient-app.md` — 要望原文
 - `docs/rfp/color-gradient-app.md` — 要望整理
-- `docs/requirements/color-gradient-app.md` — 要件定義（現状: 視覚表現コア試作の範囲のみ）
-- `docs/internal-design/color-gradient-app.md` — 内部設計（現状: 上記の実装方式）
+- `docs/requirements/color-gradient-app.md` — 要件定義（③ 視覚表現コアの範囲）
+- `docs/requirements/color-gradient-app-async-flow.md` — 要件定義（①② 招待・非同期回答フローの範囲）
+- `docs/internal-design/color-gradient-app.md` — 内部設計（視覚表現の実装方式: Oklab・ドメインワープ・ドリップ）
+- `docs/internal-design/color-gradient-app-async-flow.md` — 内部設計（招待・非同期回答フローの実装方式: 永続化・API・ポーリング）
 
 ## app（実装）
 
-- `app/mesh-gradient/index.html` — Mesh Gradient視覚表現の試作（単一HTML、外部依存なし）。
-  1人が自分+友達の位置・色を1画面内で仮に置いて、完成アートの見た目だけを確認できるローカルシミュレーター。
-  友達へのURL送付・非同期の複数人フローは未実装。
-- `app/mesh-gradient/server.js` — 上記をローカル配信する最小static server（`.claude/launch.json`から起動）。
+- `app/mesh-gradient/public/index.html` — 発起人ページ。自分の位置・色を決め、友達を配置して招待リンクを発行する。
+  友達の回答をポーリングで自動反映する。
+- `app/mesh-gradient/public/reply.html` — 回答者ページ。招待リンクを開いた友達が色を選ぶ。自分の入力と結果の
+  ポストカードのみが見え、発起人の配置や他の友達の情報は見えない。
+- `app/mesh-gradient/public/mesh-render.js` — Mesh Gradient描画エンジン（Oklab知覚補正ブレンド、ドメインワープ、
+  ドリップ、紙質感）。発起人・回答者の両ページから共有。
+- `app/mesh-gradient/public/style.css` — 両ページ共通のスタイル。
+- `app/mesh-gradient/server.js` — 静的ファイル配信＋セッション/参加者のAPI（`.claude/launch.json`から起動）。
+- `app/mesh-gradient/data/` — 実行時データ（JSONファイル永続化）。git管理外（`app/mesh-gradient/.gitignore`）。
 
 ## .claude
 
