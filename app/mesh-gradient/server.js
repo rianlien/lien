@@ -160,16 +160,21 @@ http.createServer(function (req, res) {
       var session3 = db3[sidPatch];
       var p3 = session3 && session3.participants[pidPatch];
       if (!p3) { sendJson(res, 404, { error: "participant not found" }); return; }
+      // 友達（isSelf: false）は、回答済み（respondedAt設定済み）になった後は色・影響範囲・位置のいずれも変更できない。
+      // 「友達の色を見てから配置や強さを調整できてしまう」バイアスを防ぐため、色と同じロック条件にしている。
+      // 発起人自身（isSelf: true）は対象外（自分の色は最初から分かっているため、色を見てからのバイアスが生じない）。
+      var friendLocked = !p3.isSelf && p3.respondedAt;
+      var touchesLockedField = typeof body.reach === "number" || typeof body.color === "string"
+        || typeof body.x === "number" || typeof body.y === "number";
+      if (friendLocked && touchesLockedField) {
+        sendJson(res, 409, { error: "already responded", participant: serializeForRespondent(session3, p3) });
+        return;
+      }
       if (typeof body.x === "number") p3.x = body.x;
       if (typeof body.y === "number") p3.y = body.y;
       if (typeof body.label === "string") p3.label = body.label;
       if (typeof body.reach === "number") p3.reach = body.reach;
       if (typeof body.color === "string") {
-        // 友達（isSelf: false）は色の送信を1回のみに制限する。発起人自身の色選択は対象外（入力ミスの修正のため）。
-        if (!p3.isSelf && p3.respondedAt) {
-          sendJson(res, 409, { error: "already responded", participant: serializeForRespondent(session3, p3) });
-          return;
-        }
         p3.color = body.color;
         if (!p3.respondedAt) p3.respondedAt = new Date().toISOString();
       }

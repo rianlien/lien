@@ -271,21 +271,32 @@
       var reachLabel = document.createElement("span");
       reachLabel.className = "reach-label";
       reachLabel.textContent = "影響範囲";
-      var reachInput = document.createElement("input");
-      reachInput.type = "range";
-      reachInput.min = "0.08";
-      reachInput.max = "0.95";
-      reachInput.step = "0.01";
-      reachInput.value = p.reach || MeshRender.DEFAULT_REACH;
-      reachInput.addEventListener("input", function () {
-        p.reach = parseFloat(reachInput.value);
-        render();
-      });
-      reachInput.addEventListener("change", function () {
-        apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { reach: p.reach });
-      });
       reachRow.appendChild(reachLabel);
-      reachRow.appendChild(reachInput);
+
+      // 友達が回答済みになった後は、影響範囲を固定する（色を見てから強さを調整できてしまうと、
+      // 位置決め時点の関係性の感覚ではなく色への印象で結果を歪めてしまうため）。
+      var friendLocked = !p.isSelf && !!p.color;
+      if (friendLocked) {
+        var reachLocked = document.createElement("span");
+        reachLocked.className = "reach-label";
+        reachLocked.textContent = "固定済み（" + (p.reach || MeshRender.DEFAULT_REACH).toFixed(2) + "）";
+        reachRow.appendChild(reachLocked);
+      } else {
+        var reachInput = document.createElement("input");
+        reachInput.type = "range";
+        reachInput.min = "0.08";
+        reachInput.max = "0.95";
+        reachInput.step = "0.01";
+        reachInput.value = p.reach || MeshRender.DEFAULT_REACH;
+        reachInput.addEventListener("input", function () {
+          p.reach = parseFloat(reachInput.value);
+          render();
+        });
+        reachInput.addEventListener("change", function () {
+          apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { reach: p.reach });
+        });
+        reachRow.appendChild(reachInput);
+      }
       listEl.appendChild(reachRow);
     });
   }
@@ -313,8 +324,10 @@
     if (flow === "placing-friend") { placeFriend(u); return; }
     if (flow !== "idle") return;
 
+    // 回答済みの友達は、色を見てから位置を動かせてしまうバイアスを防ぐためドラッグ対象から外す（reach同様のロック）
     var closest = null, closestDist = Infinity;
     points.forEach(function (p) {
+      if (!p.isSelf && p.color) return;
       var d = Math.hypot(p.x - u.x, p.y - u.y);
       if (d < closestDist) { closestDist = d; closest = p; }
     });
