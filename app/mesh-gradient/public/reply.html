@@ -117,7 +117,7 @@
       fetch("/api/sessions/" + encodeURIComponent(sessionId) + "/participants/" + encodeURIComponent(participantId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ color: picker.value })
+        body: JSON.stringify({ color: picker.value, confirm: true })
       })
         .then(function (r) { return r.json(); })
         .then(function (updated) {

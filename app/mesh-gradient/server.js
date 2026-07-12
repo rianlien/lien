@@ -160,9 +160,8 @@ http.createServer(function (req, res) {
       var session3 = db3[sidPatch];
       var p3 = session3 && session3.participants[pidPatch];
       if (!p3) { sendJson(res, 404, { error: "participant not found" }); return; }
-      // 色を一度でも決めた（respondedAt設定済みの）参加者は、発起人自身も含めて色・影響範囲・位置のいずれも
-      // 変更できない。「結果を見てから調整できてしまう」バイアスを防ぐための制約で、友達・発起人を区別しない
-      // （発起人だけを例外にしていたが、「自分も同じ」という明示要望を受けて撤廃した）。
+      // 明示的に確定（confirm）した参加者は、発起人自身も含めて色・影響範囲・位置のいずれも変更できない。
+      // 「結果を見てから調整できてしまう」バイアスを防ぐための制約で、友達・発起人を区別しない。
       var locked = !!p3.respondedAt;
       var touchesLockedField = typeof body.reach === "number" || typeof body.color === "string"
         || typeof body.x === "number" || typeof body.y === "number";
@@ -174,9 +173,13 @@ http.createServer(function (req, res) {
       if (typeof body.y === "number") p3.y = body.y;
       if (typeof body.label === "string") p3.label = body.label;
       if (typeof body.reach === "number") p3.reach = body.reach;
-      if (typeof body.color === "string") {
-        p3.color = body.color;
-        if (!p3.respondedAt) p3.respondedAt = new Date().toISOString();
+      if (typeof body.color === "string") p3.color = body.color;
+      // confirmは色・影響範囲・位置を確定させる、明示的な1回限りの操作。色を設定しただけでは確定しない
+      // （発起人は色を選んだ後も影響範囲を見て調整したり、色を選び直したりする自然な試行錯誤がありうるため）。
+      // 友達（回答者）は「送信する」ボタンが { color, confirm: true } を1回で送るので体験は変わらない。
+      if (body.confirm === true && !p3.respondedAt) {
+        if (!p3.color) { sendJson(res, 400, { error: "color is required before confirm" }); return; }
+        p3.respondedAt = new Date().toISOString();
       }
       saveDb(db3);
       sendJson(res, 200, serializeForRespondent(session3, p3));

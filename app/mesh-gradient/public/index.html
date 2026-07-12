@@ -81,7 +81,7 @@
     if (flow === "placing-self") {
       text = "① キャンバスをクリックして、自分の位置を決めてください。";
     } else if (flow === "awaiting-self-color") {
-      text = "② 自分を表す色を選んでください（下の点滅しているスワッチをクリック）。";
+      text = "② 自分を表す色を選んでください（下の点滅しているスワッチをクリック）。色・影響範囲は「決定する」を押すまで何度でも選び直せます。決まったら「決定する」を押してください。";
     } else if (flow === "placing-friend") {
       text = "③ キャンバスをクリックして、友達の位置を決めてください。";
     } else {
@@ -175,9 +175,10 @@
     listEl.innerHTML = "";
     points.forEach(function (p) {
       var row = document.createElement("div");
-      row.className = "point-row" + (p.isSelf && !p.color ? " pending" : "") + (!p.isSelf && p.color ? " responded" : "");
+      row.className = "point-row" + (p.isSelf && !p.respondedAt ? " pending" : "") + (!p.isSelf && p.respondedAt ? " responded" : "");
 
-      if (p.isSelf && !p.color) {
+      if (p.isSelf && !p.respondedAt) {
+        // 決定するまでは、色を選んだ後でも何度でも選び直せる（confirmを伴わないPATCHはロックしない）
         var colorInput = document.createElement("input");
         colorInput.type = "color";
         colorInput.id = "color-" + p.id;
@@ -188,19 +189,13 @@
         });
         colorInput.addEventListener("change", function () {
           apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { color: colorInput.value }).then(function () {
-            // pollingでpointsが丸ごと差し替わるため、pendingSelfとの同一性ではなくidで判定する
-            if (flow === "awaiting-self-color") {
-              pendingSelf = null;
-              flow = "idle";
-              updateInstruction();
-            }
             renderList();
             render();
           });
         });
         row.appendChild(colorInput);
       } else if (p.isSelf) {
-        // 自分も、一度色を決めたら発起人自身も含めてロック対象（色を見てから調整するバイアスを防ぐため）
+        // 自分も、決定した後は発起人自身も含めてロック対象（色を見てから調整するバイアスを防ぐため）
         var selfSwatch = document.createElement("div");
         selfSwatch.style.width = "32px";
         selfSwatch.style.height = "32px";
@@ -229,11 +224,36 @@
       var posSpan = document.createElement("span");
       posSpan.className = "pos";
       if (p.isSelf) {
-        posSpan.textContent = p.color ? "自分" : "色を選択中…";
+        posSpan.textContent = !p.color ? "色を選択中…" : (p.respondedAt ? "自分" : "決定してください");
       } else {
-        posSpan.textContent = p.color ? "回答済み" : "招待リンク未回答";
+        posSpan.textContent = p.respondedAt ? "回答済み" : "招待リンク未回答";
       }
       row.appendChild(posSpan);
+
+      if (p.isSelf && p.color && !p.respondedAt) {
+        // 色・影響範囲を選んだ後、明示的にこのボタンを押すまでは何度でも調整できる
+        var confirmBtn = document.createElement("button");
+        confirmBtn.textContent = "決定する";
+        confirmBtn.style.fontSize = "11px";
+        confirmBtn.style.padding = "4px 10px";
+        confirmBtn.style.borderRadius = "6px";
+        confirmBtn.style.border = "1px solid #4a4af0";
+        confirmBtn.style.background = "#4a4af0";
+        confirmBtn.style.color = "#fff";
+        confirmBtn.style.cursor = "pointer";
+        confirmBtn.addEventListener("click", function () {
+          apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { confirm: true }).then(function () {
+            if (flow === "awaiting-self-color") {
+              pendingSelf = null;
+              flow = "idle";
+              updateInstruction();
+            }
+            renderList();
+            render();
+          });
+        });
+        row.appendChild(confirmBtn);
+      }
 
       if (p.isSelf) {
         var tag = document.createElement("span");
@@ -282,9 +302,10 @@
       reachLabel.textContent = "影響範囲";
       reachRow.appendChild(reachLabel);
 
-      // 色を一度でも決めたら、発起人自身も含めて影響範囲を固定する（色を見てから強さを調整できてしまうと、
-      // 位置決め時点の関係性の感覚ではなく色への印象で結果を歪めてしまうため）。
-      var locked = !!p.color;
+      // 明示的に決定（confirm）した後は、発起人自身も含めて影響範囲を固定する（色を見てから強さを調整
+      // できてしまうと、位置決め時点の関係性の感覚ではなく色への印象で結果を歪めてしまうため）。
+      // 決定前（色を選んだだけの段階）はまだロックしない——colorではなくrespondedAtで判定する。
+      var locked = !!p.respondedAt;
       if (locked) {
         var reachLocked = document.createElement("span");
         reachLocked.className = "reach-label";
@@ -333,11 +354,11 @@
     if (flow === "placing-friend") { placeFriend(u); return; }
     if (flow !== "idle") return;
 
-    // 色を一度でも決めた点は、発起人自身も含めてドラッグ対象から外す（色を見てから位置を動かせてしまう
-    // バイアスを防ぐため。reach・colorのロックと同条件）
+    // 明示的に決定（confirm）した点は、発起人自身も含めてドラッグ対象から外す（色を見てから位置を
+    // 動かせてしまうバイアスを防ぐため。reach・colorのロックと同条件）
     var closest = null, closestDist = Infinity;
     points.forEach(function (p) {
-      if (p.color) return;
+      if (p.respondedAt) return;
       var d = Math.hypot(p.x - u.x, p.y - u.y);
       if (d < closestDist) { closestDist = d; closest = p; }
     });
