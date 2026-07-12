@@ -50,7 +50,9 @@
     pane.appendChild(div);
   }
 
-  function appendPostcard(color, hintText) {
+  // ポストカードは自分の色×発起人の色の2点グラデーションにする（発起人の位置や他の友達の情報は渡ってこない）。
+  // 自分の色を上、発起人の色を下に置き、その間で混ざり合う見た目にする。
+  function appendPostcard(participant, hintText) {
     var canvasWrap = document.createElement("div");
     canvasWrap.className = "reply-canvas-wrap";
     var canvas = document.createElement("canvas");
@@ -58,7 +60,12 @@
     canvas.height = 840;
     canvasWrap.appendChild(canvas);
     pane.appendChild(canvasWrap);
-    MeshRender.render(canvas, [{ id: participantId, x: 0.5, y: 0.38, color: color, reach: 0.55 }], "perceptual");
+
+    var points = [{ id: participantId, x: 0.5, y: 0.28, color: participant.color, reach: 0.42 }];
+    if (participant.initiatorColor) {
+      points.push({ id: participantId + "-initiator", x: 0.5, y: 0.72, color: participant.initiatorColor, reach: 0.42 });
+    }
+    MeshRender.render(canvas, points, "perceptual");
 
     var doneHint = document.createElement("div");
     doneHint.className = "reply-done-hint";
@@ -73,7 +80,7 @@
     question.className = "reply-question";
     question.textContent = "回答ありがとう。";
     pane.appendChild(question);
-    appendPostcard(participant.color, "この色は送信済み。もう選び直すことはできない。");
+    appendPostcard(participant, "この色は送信済み。もう選び直すことはできない。");
   }
 
   function renderForm(participant) {

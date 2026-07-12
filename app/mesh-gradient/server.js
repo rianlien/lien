@@ -65,9 +65,21 @@ function sendJson(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
-// ---- 参加者の外部表現（回答者ページには他参加者の情報を一切渡さないので、この関数はGET /sessions/:sid でのみ使う） ----
+// ---- 参加者の外部表現 ----
 function serializeParticipant(p) {
   return { id: p.id, label: p.label, x: p.x, y: p.y, color: p.color, reach: p.reach, isSelf: !!p.isSelf, respondedAt: p.respondedAt || null };
+}
+function findSelf(session) {
+  return Object.keys(session.participants)
+    .map(function (k) { return session.participants[k]; })
+    .filter(function (p) { return p.isSelf; })[0];
+}
+// 回答者ページ向け: 自分自身の情報＋発起人の色だけを追加する（発起人の位置・他の友達の情報は含めない）
+function serializeForRespondent(session, p) {
+  var self = findSelf(session);
+  var out = serializeParticipant(p);
+  out.initiatorColor = (self && self.color) || null;
+  return out;
 }
 
 http.createServer(function (req, res) {
@@ -135,8 +147,7 @@ http.createServer(function (req, res) {
     var session2 = db2[sidGetP];
     var p2 = session2 && session2.participants[pidGet];
     if (!p2) { sendJson(res, 404, { error: "participant not found" }); return; }
-    // 回答者ページ向け: 自分自身の情報だけを返す（他参加者の位置・色は含めない）
-    sendJson(res, 200, serializeParticipant(p2));
+    sendJson(res, 200, serializeForRespondent(session2, p2));
     return;
   }
 
@@ -156,14 +167,14 @@ http.createServer(function (req, res) {
       if (typeof body.color === "string") {
         // 友達（isSelf: false）は色の送信を1回のみに制限する。発起人自身の色選択は対象外（入力ミスの修正のため）。
         if (!p3.isSelf && p3.respondedAt) {
-          sendJson(res, 409, { error: "already responded", participant: serializeParticipant(p3) });
+          sendJson(res, 409, { error: "already responded", participant: serializeForRespondent(session3, p3) });
           return;
         }
         p3.color = body.color;
         if (!p3.respondedAt) p3.respondedAt = new Date().toISOString();
       }
       saveDb(db3);
-      sendJson(res, 200, serializeParticipant(p3));
+      sendJson(res, 200, serializeForRespondent(session3, p3));
     });
     return;
   }
