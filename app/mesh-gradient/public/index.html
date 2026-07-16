@@ -93,16 +93,18 @@
   }
 
   // ---- API ----
+  // レスポンスがエラー（4xx/5xx）の場合、そのボディをsessionId等として使ってしまうと
+  // undefinedのまま招待リンクが発行される等の壊れた状態に進んでしまうため、ここで必ず弾く。
   function apiPost(path, body) {
     return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json(); });
+      .then(function (r) { if (!r.ok) throw new Error("api error"); return r.json(); });
   }
   function apiPatch(path, body) {
     return fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json(); });
+      .then(function (r) { if (!r.ok) throw new Error("api error"); return r.json(); });
   }
   function apiGet(path) {
-    return fetch(path).then(function (r) { return r.json(); });
+    return fetch(path).then(function (r) { if (!r.ok) throw new Error("api error"); return r.json(); });
   }
 
   function inviteUrl(participantId) {
@@ -135,6 +137,8 @@
       startPolling();
       var input = document.getElementById("color-" + selfId);
       if (input) { try { input.click(); } catch (e) { /* 手動クリックの導線は残っている */ } }
+    }).catch(function () {
+      instructionEl.textContent = "通信に失敗した。時間をおいてページを再読み込みしてください。";
     });
   }
 
@@ -150,6 +154,10 @@
       updateInstruction();
       renderList();
       render();
+    }).catch(function () {
+      flow = "idle";
+      updateInstruction();
+      instructionEl.textContent = "友達の追加に失敗した。もう一度試してください。";
     });
   }
 
@@ -166,7 +174,7 @@
           renderList();
           render();
         }
-      });
+      }).catch(function () { /* 通信エラー時は何もせず次回のポーリングに任せる */ });
     }, 3000);
   }
 
@@ -191,7 +199,7 @@
           apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { color: colorInput.value }).then(function () {
             renderList();
             render();
-          });
+          }).catch(function () { /* 保存に失敗しても選び直せば再送されるので静かに無視 */ });
         });
         row.appendChild(colorInput);
       } else if (p.isSelf) {
@@ -217,7 +225,8 @@
       labelInput.value = p.label;
       labelInput.addEventListener("input", function () { p.label = labelInput.value; });
       labelInput.addEventListener("change", function () {
-        apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { label: labelInput.value });
+        apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { label: labelInput.value })
+          .catch(function () { /* 保存に失敗しても再入力すれば再送されるので静かに無視 */ });
       });
       row.appendChild(labelInput);
 
@@ -250,6 +259,8 @@
             }
             renderList();
             render();
+          }).catch(function () {
+            alert("決定に失敗した。もう一度試してください。");
           });
         });
         row.appendChild(confirmBtn);
@@ -323,7 +334,8 @@
           render();
         });
         reachInput.addEventListener("change", function () {
-          apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { reach: p.reach });
+          apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { reach: p.reach })
+            .catch(function () { /* 保存に失敗してもスライダー操作で再送されるので静かに無視 */ });
         });
         reachRow.appendChild(reachInput);
       }
