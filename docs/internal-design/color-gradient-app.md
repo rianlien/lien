@@ -1,8 +1,8 @@
 # 色グラデーションアプリ — 内部設計（視覚表現コア試作）
 
-<internal_design status="unrealized" name="mesh_gradient_visual_core_design" requirements="mesh_gradient_visual_core">
+<internal_design status="realized" name="mesh_gradient_visual_core_design" requirements="mesh_gradient_visual_core">
 
-実装本体: [app/mesh-gradient/index.html](../../app/mesh-gradient/index.html)（単一HTMLファイル、外部依存なし）。
+実装本体: [app/mesh-gradient/public/index.html](../../app/mesh-gradient/public/index.html)（発起人ページ、視覚表現エンジンは[mesh-render.js](../../app/mesh-gradient/public/mesh-render.js)に分離）。
 各計算のWHY（なぜその式・その定数か）は実装のコメントに書いてあるため、ここでは重複させない。
 ここに書くのは、**要件をどの技術選択で満たすことにしたか**という、コードの各行からは読み取れない設計判断のみ。
 

@@ -1,6 +1,6 @@
 # 色グラデーションアプリ — 要件定義（視覚表現コア試作の範囲）
 
-<requirements status="unrealized" name="mesh_gradient_visual_core" rfps="color_gradient_app">
+<requirements status="realized" name="mesh_gradient_visual_core" rfps="color_gradient_app">
 
 ## この要件定義がカバーする範囲
 
