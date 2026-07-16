@@ -8,6 +8,7 @@
 - `docs/rfp/color-gradient-app.md` — 要望整理
 - `docs/requirements/color-gradient-app.md` — 要件定義（③ 視覚表現コアの範囲）
 - `docs/requirements/color-gradient-app-async-flow.md` — 要件定義（①② 招待・非同期回答フローの範囲）
+- `docs/requirements/color-gradient-app-session-completion.md` — 要件定義（発起人による「完成」確定、未実装）
 - `docs/internal-design/color-gradient-app.md` — 内部設計（視覚表現の実装方式: Oklab・ドメインワープ・ドリップ）
 - `docs/internal-design/color-gradient-app-async-flow.md` — 内部設計（招待・非同期回答フローの実装方式: 永続化・API・ポーリング）
 
