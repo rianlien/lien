@@ -1,6 +1,6 @@
 # 色グラデーションアプリ — 要件定義（招待・非同期回答フロー）
 
-<requirements status="unrealized" name="async_invite_response_flow" rfps="color_gradient_app">
+<requirements status="realized" name="async_invite_response_flow" rfps="color_gradient_app">
 
 ## この要件定義がカバーする範囲
 
