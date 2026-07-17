@@ -7,6 +7,9 @@
 const crypto = require("crypto");
 
 const DEFAULT_REACH = 0.38;
+// 完成版アートのdataURL文字列長の上限。Upstash Redis無料プランのREST APIリクエスト1MB制限に
+// JSONラッパー等の余白を残して収まるよう抑える（fable-advisor相談で確認した制約）。
+const MAX_FINAL_ART_LENGTH = 900000;
 
 function newId() {
   return crypto.randomBytes(6).toString("hex");
@@ -22,12 +25,26 @@ function findSelf(session) {
     .filter(function (p) { return p.isSelf; })[0];
 }
 
-// 回答者ページ向け: 自分自身の情報＋発起人の色だけを追加する（発起人の位置・他の友達の情報は含めない）
+// 回答者ページ向け: 自分自身の情報＋発起人の色だけを追加する（発起人の位置・他の友達の情報は含めない）。
+// 完成版アート（finalArtDataUrl）は、セッションが完成済み かつ 自分が回答済みの場合のみ含める
+// （未回答のまま締め切られた枠には渡さない。回答済みの友達との非対称は要件で明示済み）。
 function serializeForRespondent(session, p) {
   const self = findSelf(session);
   const out = serializeParticipant(p);
   out.initiatorColor = (self && self.color) || null;
+  out.completedAt = session.completedAt || null;
+  out.finalArtDataUrl = (session.completedAt && p.respondedAt) ? (session.finalArtDataUrl || null) : null;
   return out;
+}
+
+// 発起人ページ向け: 参加者一覧に加えて、セッション全体の完成状態を返す。
+// 発起人は自分自身が完成させた本人なので、respondedAtの有無に関わらず完成版アートを見られる。
+function serializeSessionForInitiator(session) {
+  return {
+    participants: listParticipants(session),
+    completedAt: session.completedAt || null,
+    finalArtDataUrl: session.completedAt ? (session.finalArtDataUrl || null) : null
+  };
 }
 
 function createSession(body) {
@@ -45,13 +62,25 @@ function createSession(body) {
   return { sid: sid, selfId: selfId, session: session };
 }
 
+// 「完成」後の全操作拒否を1箇所にまとめる（addParticipant/patchParticipant/deleteParticipantで共有）。
+// participantを渡すと、拒否レスポンスにその参加者の最新状態を添える（クライアントが再同期に使える）。
+function completedRejection(session, participant) {
+  const body = { error: "session completed" };
+  if (participant) body.participant = serializeForRespondent(session, participant);
+  return { status: 409, body: body };
+}
+
+// 「完成」後は新しい友達枠の追加ができない（要件: 新規招待リンクの発行はできない）。
 function addParticipant(session, body) {
+  if (session.completedAt) {
+    return completedRejection(session);
+  }
   const pid = newId();
   session.participants[pid] = {
     id: pid, label: body.label || "友達", x: body.x, y: body.y,
     color: null, reach: DEFAULT_REACH, isSelf: false, respondedAt: null
   };
-  return pid;
+  return { status: 200, body: { participantId: pid } };
 }
 
 function listParticipants(session) {
@@ -73,6 +102,12 @@ function getForRespondent(session, pid) {
 function patchParticipant(session, pid, body) {
   const p = session.participants[pid];
   if (!p) return { status: 404, body: { error: "participant not found" } };
+
+  // 「完成」はセッション全体のスナップショット確定。完成後は発起人自身も含めて一切のフィールドを
+  // 変更できない（参加者個別のrespondedAtロックとは別レイヤーで、全参加者に一律にかかる）。
+  if (session.completedAt) {
+    return completedRejection(session, p);
+  }
 
   const locked = !!p.respondedAt;
   const touchesLockedField = typeof body.reach === "number" || typeof body.color === "string"
@@ -98,8 +133,29 @@ function deleteParticipant(session, pid) {
   const p = session.participants[pid];
   if (!p) return { status: 404, body: { error: "participant not found" } };
   if (p.isSelf) return { status: 400, body: { error: "cannot remove self" } };
+  if (session.completedAt) return completedRejection(session, p);
   delete session.participants[pid];
   return { status: 200, body: { ok: true } };
+}
+
+// 発起人による「完成」確定。completedAtのセットとfinalArtDataUrlの保存を1回の呼び出しで行う
+// （呼び出し側は結果をそのままstore.saveSessionする1回の保存に乗せる。「完成したが画像が無い」
+// という中間状態を作らないため）。不可逆operationのため、既に完成済みなら409で拒否する。
+function completeSession(session, dataUrl) {
+  if (session.completedAt) {
+    // 既に完成済み（例: 別タブ/デバイスからのレースで先に完成させた後の再試行）。
+    // completedAt/finalArtDataUrlを添えて返すことで、呼び出し側が「実は完成済み」と正しく判定できるようにする。
+    return { status: 409, body: { error: "already completed", completedAt: session.completedAt, finalArtDataUrl: session.finalArtDataUrl || null } };
+  }
+  if (typeof dataUrl !== "string" || dataUrl.indexOf("data:image/png;base64,") !== 0) {
+    return { status: 400, body: { error: "dataUrl must be a base64-encoded PNG data URL" } };
+  }
+  if (dataUrl.length > MAX_FINAL_ART_LENGTH) {
+    return { status: 413, body: { error: "final art image is too large" } };
+  }
+  session.completedAt = new Date().toISOString();
+  session.finalArtDataUrl = dataUrl;
+  return { status: 200, body: { completedAt: session.completedAt, finalArtDataUrl: session.finalArtDataUrl } };
 }
 
 module.exports = {
@@ -110,5 +166,7 @@ module.exports = {
   listParticipants: listParticipants,
   getForRespondent: getForRespondent,
   patchParticipant: patchParticipant,
-  deleteParticipant: deleteParticipant
+  deleteParticipant: deleteParticipant,
+  completeSession: completeSession,
+  serializeSessionForInitiator: serializeSessionForInitiator
 };

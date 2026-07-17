@@ -71,9 +71,23 @@ http.createServer(function (req, res) {
       if (err) { sendJson(res, 400, { error: "invalid json" }); return; }
       var sessionAdd = store.loadSession(sidAdd);
       if (!sessionAdd) { sendJson(res, 404, { error: "session not found" }); return; }
-      var pid = participants.addParticipant(sessionAdd, body);
+      var addResult = participants.addParticipant(sessionAdd, body);
       store.saveSession(sidAdd, sessionAdd);
-      sendJson(res, 200, { participantId: pid });
+      sendJson(res, addResult.status, addResult.body);
+    });
+    return;
+  }
+
+  // POST /api/sessions/:sid/complete
+  if (req.method === "POST" && segs.length === 4 && segs[0] === "api" && segs[1] === "sessions" && segs[3] === "complete") {
+    var sidComplete = segs[2];
+    readJsonBody(req, function (err, body) {
+      if (err) { sendJson(res, 400, { error: "invalid json" }); return; }
+      var sessionComplete = store.loadSession(sidComplete);
+      if (!sessionComplete) { sendJson(res, 404, { error: "session not found" }); return; }
+      var completeResult = participants.completeSession(sessionComplete, body.dataUrl);
+      store.saveSession(sidComplete, sessionComplete);
+      sendJson(res, completeResult.status, completeResult.body);
     });
     return;
   }
@@ -83,7 +97,8 @@ http.createServer(function (req, res) {
     var sidGet = segs[2];
     var sessionGet = store.loadSession(sidGet);
     if (!sessionGet) { sendJson(res, 404, { error: "session not found" }); return; }
-    sendJson(res, 200, { sessionId: sidGet, participants: participants.listParticipants(sessionGet) });
+    var summary = participants.serializeSessionForInitiator(sessionGet);
+    sendJson(res, 200, { sessionId: sidGet, participants: summary.participants, completedAt: summary.completedAt, finalArtDataUrl: summary.finalArtDataUrl });
     return;
   }
 

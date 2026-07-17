@@ -73,6 +73,37 @@
     pane.appendChild(doneHint);
   }
 
+  // 完成版アート（発起人＋全友達の色が混ざった最終Mesh Gradient）。完成後、回答済みの友達にのみ渡る
+  // （serializeForRespondentがrespondedAt済みの場合のみfinalArtDataUrlを含めるため、ここでは
+  // 存在チェックだけでよい）。
+  function appendFinalArt(participant) {
+    var heading = document.createElement("div");
+    heading.className = "reply-question";
+    heading.style.fontSize = "16px";
+    heading.textContent = "完成版アート";
+    pane.appendChild(heading);
+
+    var canvasWrap = document.createElement("div");
+    canvasWrap.className = "reply-canvas-wrap";
+    var img = document.createElement("img");
+    img.src = participant.finalArtDataUrl;
+    img.alt = "完成版アート";
+    img.style.width = "100%";
+    img.style.height = "100%";
+    img.style.display = "block";
+    img.style.borderRadius = "6px";
+    img.style.boxShadow = "0 6px 28px rgba(60,50,30,0.14)";
+    canvasWrap.appendChild(img);
+    pane.appendChild(canvasWrap);
+
+    var download = document.createElement("a");
+    download.className = "reply-download";
+    download.href = participant.finalArtDataUrl;
+    download.setAttribute("download", "color-gradient-" + sessionId + ".png");
+    download.textContent = "ダウンロード";
+    pane.appendChild(download);
+  }
+
   // 送信済みの参加者には、色を選び直す手段を一切見せない（やり直し不可はUI側でも徹底する）
   function renderAlreadyResponded(participant) {
     pane.innerHTML = "";
@@ -81,14 +112,39 @@
     question.textContent = "回答ありがとう。";
     pane.appendChild(question);
     appendPostcard(participant, "この色は送信済み。もう選び直すことはできない。");
+    if (participant.finalArtDataUrl) {
+      appendFinalArt(participant);
+    }
   }
 
-  function renderForm(participant) {
+  // 未回答のまま「完成」により締め切られた枠。エラーではなく、締め切られたことが伝わる表示にする
+  // （UXライティングの最終文言は今後の課題。ここでは最小限の文言で機能を満たす）。
+  function renderClosed() {
+    pane.innerHTML = "";
+    var question = document.createElement("div");
+    question.className = "reply-question";
+    question.textContent = "この招待は締め切られました。";
+    pane.appendChild(question);
+    var hint = document.createElement("div");
+    hint.className = "reply-done-hint";
+    hint.textContent = "回答の受付は終了している。";
+    pane.appendChild(hint);
+  }
+
+  // 参加者の最新状態から、表示すべき画面を出し分ける（回答済み／締め切り／回答フォーム）
+  function renderParticipantState(participant) {
     if (participant.respondedAt) {
       renderAlreadyResponded(participant);
       return;
     }
+    if (participant.completedAt) {
+      renderClosed();
+      return;
+    }
+    renderForm(participant);
+  }
 
+  function renderForm(participant) {
     pane.innerHTML = "";
 
     var question = document.createElement("div");
@@ -119,9 +175,21 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ color: picker.value, confirm: true })
       })
-        .then(function (r) { return r.json(); })
-        .then(function (updated) {
-          renderAlreadyResponded(updated);
+        .then(function (r) {
+          return r.json().then(function (body) { return { ok: r.ok, body: body }; });
+        })
+        .then(function (result) {
+          if (result.ok) {
+            renderParticipantState(result.body);
+            return;
+          }
+          // 409（既に回答済み／送信の直前にセッションが「完成」して締め切られた等）。
+          // エラーボディのparticipantで最新状態を出し分ける。
+          if (result.body && result.body.participant) {
+            renderParticipantState(result.body.participant);
+          } else {
+            submit.disabled = false;
+          }
         })
         .catch(function () {
           submit.disabled = false;
@@ -139,7 +207,7 @@
       if (!r.ok) throw new Error("not found");
       return r.json();
     })
-    .then(renderForm)
+    .then(renderParticipantState)
     .catch(function () {
       renderError("このリンクは見つからなかった。発行し直してもらってください。");
     });
