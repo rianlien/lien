@@ -27,6 +27,15 @@
     </div>
     <div id="pointList"></div>
     <button class="add-btn" id="addPoint">+ 友達を追加</button>
+
+    <div class="complete-section" id="completeSection">
+      <button class="complete-btn" id="completeBtn">完成する</button>
+      <div class="complete-hint" id="completeHint"></div>
+    </div>
+    <div class="artwork-view" id="artworkView" style="display:none">
+      <img id="artworkImg" alt="完成版アート" />
+      <a id="artworkDownload">画像をダウンロード</a>
+    </div>
   </div>
 
 <script src="/mesh-render.js"></script>
@@ -43,6 +52,7 @@
   var points = []; // サーバーのparticipantsをそのまま反映するローカルミラー
   var blendMode = "perceptual"; // "naive" | "perceptual"
   var nextFriendNum = 1;
+  var sessionCompletedAt = null; // セッション全体の完成確定（発起人自身のrespondedAtとは別レイヤー）
 
   // flow:
   //  - "placing-self":       自分の位置をキャンバス上で決める段階（セッション未作成）
@@ -59,11 +69,84 @@
   var instructionEl = document.getElementById("instruction");
   var addBtn = document.getElementById("addPoint");
   var listEl = document.getElementById("pointList");
+  var completeSection = document.getElementById("completeSection");
+  var completeBtn = document.getElementById("completeBtn");
+  var completeHint = document.getElementById("completeHint");
+  var artworkView = document.getElementById("artworkView");
+  var artworkImg = document.getElementById("artworkImg");
+  var artworkDownload = document.getElementById("artworkDownload");
 
   function render() {
     MeshRender.render(canvas, points, blendMode);
     updateOverlay();
+    updateCompletionUI();
   }
+
+  function selfParticipant() {
+    return points.filter(function (p) { return p.isSelf; })[0];
+  }
+
+  function artworkUrl(download) {
+    var self = selfParticipant();
+    if (!sessionId || !self) return "";
+    return "/api/sessions/" + encodeURIComponent(sessionId) + "/participants/" + encodeURIComponent(self.id) + "/artwork" + (download ? "?download=1" : "");
+  }
+
+  // 「完成」操作の表示切り替え。完成前は「完成する」ボタン（発起人自身が決定済みの場合のみ有効）、
+  // 完成後は完成版アートの閲覧・ダウンロードに置き換える（internal-design: session_completion参照）。
+  function updateCompletionUI() {
+    if (!sessionId) {
+      completeSection.style.display = "none";
+      artworkView.style.display = "none";
+      return;
+    }
+    if (sessionCompletedAt) {
+      completeSection.style.display = "none";
+      artworkView.style.display = "block";
+      artworkImg.src = artworkUrl(false);
+      artworkDownload.href = artworkUrl(true);
+      return;
+    }
+    artworkView.style.display = "none";
+    completeSection.style.display = "block";
+    if (completeBtn.dataset.busy === "1") return;
+    var self = selfParticipant();
+    var ready = !!(self && self.respondedAt);
+    completeBtn.disabled = !ready;
+    completeHint.textContent = ready
+      ? "友達をこれ以上追加しないなら、完成として確定できる。確定すると未回答の枠は締め切られ、以後変更できない。"
+      : "自分の色を「決定する」で確定すると、完成できるようになる。";
+  }
+
+  // 完成版アートは、画面表示用canvasではなく固定解像度のオフスクリーンcanvasに描き直す
+  // （発起人のウィンドウサイズに完成版の画質が左右されないようにするため）。
+  function buildArtworkDataUrl() {
+    var off = document.createElement("canvas");
+    off.width = 1200;
+    off.height = 1800;
+    MeshRender.render(off, points, blendMode);
+    return off.toDataURL("image/jpeg", 0.92);
+  }
+
+  completeBtn.addEventListener("click", function () {
+    if (completeBtn.disabled || completeBtn.dataset.busy === "1") return;
+    completeBtn.dataset.busy = "1";
+    completeBtn.disabled = true;
+    completeBtn.textContent = "生成中…";
+    var base64 = buildArtworkDataUrl().split(",")[1];
+    apiPost("/api/sessions/" + sessionId + "/complete", { artwork: base64 }).then(function (res) {
+      completeBtn.dataset.busy = "";
+      completeBtn.textContent = "完成する";
+      if (res && res.completedAt) {
+        sessionCompletedAt = res.completedAt;
+        updateInstruction();
+        updateCompletionUI();
+      } else {
+        alert((res && res.error) || "完成に失敗した。もう一度試してください。");
+        updateCompletionUI();
+      }
+    });
+  });
 
   function updateOverlay() {
     overlay.innerHTML = "";
@@ -78,7 +161,9 @@
 
   function updateInstruction() {
     var text;
-    if (flow === "placing-self") {
+    if (sessionCompletedAt) {
+      text = "セッションは完成した。新しい友達の追加や削除、色・位置の変更はできない。";
+    } else if (flow === "placing-self") {
       text = "① キャンバスをクリックして、自分の位置を決めてください。";
     } else if (flow === "awaiting-self-color") {
       text = "② 自分を表す色を選んでください（下の点滅しているスワッチをクリック）。色・影響範囲は「決定する」を押すまで何度でも選び直せます。決まったら「決定する」を押してください。";
@@ -89,7 +174,7 @@
     }
     instructionEl.textContent = text;
     canvas.classList.toggle("placing", flow === "placing-self" || flow === "placing-friend");
-    addBtn.disabled = flow !== "idle";
+    addBtn.disabled = flow !== "idle" || !!sessionCompletedAt;
   }
 
   // ---- API ----
@@ -162,7 +247,9 @@
         if (dragging) return; // 応答が返ってくるまでの間にドラッグが始まった場合は上書きしない
         if (!res || !res.participants) return; // サーバー側でセッションが読めない場合は何もせず次回に任せる
         points = res.participants;
+        sessionCompletedAt = res.completedAt || null;
         if (flow === "idle" || flow === "awaiting-self-color") {
+          updateInstruction();
           renderList();
           render();
         }
@@ -225,8 +312,10 @@
       posSpan.className = "pos";
       if (p.isSelf) {
         posSpan.textContent = !p.color ? "色を選択中…" : (p.respondedAt ? "自分" : "決定してください");
+      } else if (p.respondedAt) {
+        posSpan.textContent = "回答済み";
       } else {
-        posSpan.textContent = p.respondedAt ? "回答済み" : "招待リンク未回答";
+        posSpan.textContent = sessionCompletedAt ? "招待リンク未回答（締切）" : "招待リンク未回答";
       }
       row.appendChild(posSpan);
 
@@ -260,7 +349,7 @@
         tag.className = "self-marker";
         tag.textContent = "★";
         row.appendChild(tag);
-      } else {
+      } else if (!sessionCompletedAt) {
         var removeBtn = document.createElement("button");
         removeBtn.className = "remove";
         removeBtn.textContent = "×";
@@ -305,7 +394,8 @@
       // 明示的に決定（confirm）した後は、発起人自身も含めて影響範囲を固定する（色を見てから強さを調整
       // できてしまうと、位置決め時点の関係性の感覚ではなく色への印象で結果を歪めてしまうため）。
       // 決定前（色を選んだだけの段階）はまだロックしない——colorではなくrespondedAtで判定する。
-      var locked = !!p.respondedAt;
+      // 完成後は、未回答のまま自動締切された枠も含めて全面凍結する（sessionCompletedAt）。
+      var locked = !!p.respondedAt || !!sessionCompletedAt;
       if (locked) {
         var reachLocked = document.createElement("span");
         reachLocked.className = "reach-label";
@@ -352,7 +442,7 @@
     var u = canvasPosToUnit(e.clientX, e.clientY);
     if (flow === "placing-self") { placeSelf(u); return; }
     if (flow === "placing-friend") { placeFriend(u); return; }
-    if (flow !== "idle") return;
+    if (flow !== "idle" || sessionCompletedAt) return;
 
     // 明示的に決定（confirm）した点は、発起人自身も含めてドラッグ対象から外す（色を見てから位置を
     // 動かせてしまうバイアスを防ぐため。reach・colorのロックと同条件）
@@ -390,6 +480,7 @@
     sessionId = null;
     selfId = null;
     points = [];
+    sessionCompletedAt = null;
     flow = "placing-self";
     updateInstruction();
     renderList();
@@ -408,6 +499,7 @@
           return;
         }
         points = res.participants;
+        sessionCompletedAt = res.completedAt || null;
         var self = points.filter(function (p) { return p.isSelf; })[0];
         pendingSelf = self && !self.color ? self : null;
         flow = pendingSelf ? "awaiting-self-color" : "idle";

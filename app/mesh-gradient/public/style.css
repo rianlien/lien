@@ -203,6 +203,49 @@ h1 { font-size: 16px; margin: 0 0 4px; color: #2c2a24; }
   cursor: pointer;
 }
 
+.complete-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #ece7dc;
+}
+.complete-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: #4a4af0;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.complete-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.complete-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #8f8a7c;
+  line-height: 1.5;
+}
+.artwork-view {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #ece7dc;
+  text-align: center;
+}
+.artwork-view img {
+  width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 6px 28px rgba(60,50,30,0.14);
+}
+.artwork-view a {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #4a4af0;
+}
+
 /* ---- reply.html 専用: 回答者は色ピッカーとポストカードのみ ---- */
 .reply-pane {
   flex: 1 1 auto;

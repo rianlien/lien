@@ -25,6 +25,21 @@
     color: #a05a3a;
     text-align: center;
   }
+  .reply-artwork-wrap {
+    width: min(50vw, 46vh);
+    text-align: center;
+  }
+  .reply-artwork-img {
+    width: 100%;
+    border-radius: 6px;
+    box-shadow: 0 6px 28px rgba(60,50,30,0.14);
+  }
+  .reply-artwork-download {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 12px;
+    color: #4a4af0;
+  }
 </style>
 </head>
 <body>
@@ -73,6 +88,33 @@
     pane.appendChild(doneHint);
   }
 
+  // 完成後にのみ見られる、セッション全体の完成版アート（発起人＋全友達の色が混ざった最終Mesh Gradient）。
+  // 生の座標・色データではなく、画像バイトを返す専用エンドポイントからのみ取得する
+  // （閲覧可否の判定はサーバー側canViewArtworkに一元化されており、ここでは出し分けない）。
+  function artworkUrl(download) {
+    var q = download ? "?download=1" : "";
+    return "/api/sessions/" + encodeURIComponent(sessionId) + "/participants/" + encodeURIComponent(participantId) + "/artwork" + q;
+  }
+
+  function appendFinalArtwork() {
+    var wrap = document.createElement("div");
+    wrap.className = "reply-artwork-wrap";
+    var heading = document.createElement("div");
+    heading.className = "reply-done-hint";
+    heading.textContent = "みんなの色が混ざった完成版:";
+    wrap.appendChild(heading);
+    var img = document.createElement("img");
+    img.className = "reply-artwork-img";
+    img.src = artworkUrl(false);
+    wrap.appendChild(img);
+    var dl = document.createElement("a");
+    dl.className = "reply-artwork-download";
+    dl.href = artworkUrl(true);
+    dl.textContent = "画像をダウンロード";
+    wrap.appendChild(dl);
+    pane.appendChild(wrap);
+  }
+
   // 送信済みの参加者には、色を選び直す手段を一切見せない（やり直し不可はUI側でも徹底する）
   function renderAlreadyResponded(participant) {
     pane.innerHTML = "";
@@ -81,11 +123,28 @@
     question.textContent = "回答ありがとう。";
     pane.appendChild(question);
     appendPostcard(participant, "この色は送信済み。もう選び直すことはできない。");
+    if (participant.completed) {
+      appendFinalArtwork();
+    }
+  }
+
+  // 未回答のまま完成（自動締切）された枠。表示文言はUXライティング課題として
+  // async_invite_response_flowに委譲済みのため、ここでは暫定的な文言にとどめる。
+  function renderClosed() {
+    pane.innerHTML = "";
+    var question = document.createElement("div");
+    question.className = "reply-question";
+    question.textContent = "このリンクは締め切られた。";
+    pane.appendChild(question);
   }
 
   function renderForm(participant) {
     if (participant.respondedAt) {
       renderAlreadyResponded(participant);
+      return;
+    }
+    if (participant.completed) {
+      renderClosed();
       return;
     }
 
