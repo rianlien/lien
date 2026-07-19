@@ -1,6 +1,6 @@
 # 色グラデーションアプリ — 要件定義（発起人による「完成」確定）
 
-<requirements status="unrealized" name="session_completion" rfps="color_gradient_app">
+<requirements status="realized" name="session_completion" rfps="color_gradient_app">
 
 ## この要件定義がカバーする範囲
 

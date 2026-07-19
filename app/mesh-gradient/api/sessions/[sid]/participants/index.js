@@ -12,7 +12,7 @@ module.exports = async function handler(req, res) {
     res.status(404).json({ error: "session not found" });
     return;
   }
-  const pid = participants.addParticipant(session, req.body || {});
+  const result = participants.addParticipant(session, req.body || {});
   await store.saveSession(sid, session);
-  res.status(200).json({ participantId: pid });
+  res.status(result.status).json(result.body);
 };

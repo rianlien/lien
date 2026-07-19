@@ -27,6 +27,11 @@
     </div>
     <div id="pointList"></div>
     <button class="add-btn" id="addPoint">+ 友達を追加</button>
+    <button class="complete-btn" id="completeBtn">完成する</button>
+    <div class="completed-panel" id="completedPanel" style="display:none;">
+      <div class="completed-label">完成済み。これ以上の追加・変更はできない。</div>
+      <a class="download-btn" id="downloadLink">完成版アートをダウンロード</a>
+    </div>
   </div>
 
 <script src="/mesh-render.js"></script>
@@ -53,12 +58,17 @@
   var pendingSelf = null; // awaiting-self-color の間だけ使う
   var dragging = null;
   var pollTimer = null;
+  var completed = false; // 発起人が「完成」を確定したか（session.completedAt の有無）
+  var finalArtDataUrl = null;
 
   var canvas = document.getElementById("canvas");
   var overlay = document.getElementById("overlay");
   var instructionEl = document.getElementById("instruction");
   var addBtn = document.getElementById("addPoint");
   var listEl = document.getElementById("pointList");
+  var completeBtn = document.getElementById("completeBtn");
+  var completedPanel = document.getElementById("completedPanel");
+  var downloadLink = document.getElementById("downloadLink");
 
   function render() {
     MeshRender.render(canvas, points, blendMode);
@@ -76,7 +86,26 @@
     }
   }
 
+  // 完成後は、以後のUI状態を一律「完成済み」表示に固定する（addBtn等の個別disabled指定より優先）
+  function applyCompletedState() {
+    completeBtn.style.display = completed ? "none" : "";
+    completedPanel.style.display = completed && finalArtDataUrl ? "" : "none";
+    if (completed && finalArtDataUrl) {
+      downloadLink.href = finalArtDataUrl;
+      downloadLink.setAttribute("download", "color-gradient-" + sessionId + ".png");
+    }
+    if (completed) {
+      addBtn.disabled = true;
+    }
+  }
+
   function updateInstruction() {
+    if (completed) {
+      instructionEl.textContent = "完成済み。これ以上友達を追加したり、色・位置・影響範囲を変更したりはできない。";
+      canvas.classList.remove("placing");
+      addBtn.disabled = true;
+      return;
+    }
     var text;
     if (flow === "placing-self") {
       text = "① キャンバスをクリックして、自分の位置を決めてください。";
@@ -107,6 +136,24 @@
 
   function inviteUrl(participantId) {
     return location.origin + "/reply.html?s=" + encodeURIComponent(sessionId) + "&p=" + encodeURIComponent(participantId);
+  }
+
+  // サーバーに拒否された操作（完成による凍結・既に確定済み等）の後、ローカル状態をサーバーの実際の値に
+  // 合わせ直す。楽観更新した後にエラーが分かった場合の巻き戻し先として使う。
+  function resyncFromServer() {
+    return apiGet("/api/sessions/" + sessionId).then(function (res) {
+      if (!res || !res.participants) return;
+      points = res.participants;
+      if (res.completedAt) {
+        completed = true;
+        finalArtDataUrl = res.finalArtDataUrl || finalArtDataUrl;
+        updateInstruction();
+        applyCompletedState();
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      }
+      renderList();
+      render();
+    });
   }
 
   // ---- キャンバス座標変換 ----
@@ -141,13 +188,18 @@
   function placeFriend(u) {
     var label = "友達" + nextFriendNum;
     apiPost("/api/sessions/" + sessionId + "/participants", { x: u.x, y: u.y, label: label }).then(function (res) {
+      flow = "idle";
+      updateInstruction();
+      if (!res || !res.participantId) {
+        // セッションが完成済み等でサーバーに拒否された。ローカルに偽の参加者を追加せず、実際の状態に合わせ直す
+        resyncFromServer();
+        return;
+      }
       nextFriendNum++;
       points.push({
         id: res.participantId, label: label, x: u.x, y: u.y,
         color: null, reach: MeshRender.DEFAULT_REACH, isSelf: false, respondedAt: null
       });
-      flow = "idle";
-      updateInstruction();
       renderList();
       render();
     });
@@ -162,6 +214,15 @@
         if (dragging) return; // 応答が返ってくるまでの間にドラッグが始まった場合は上書きしない
         if (!res || !res.participants) return; // サーバー側でセッションが読めない場合は何もせず次回に任せる
         points = res.participants;
+        if (res.completedAt) {
+          // 完成後はセッションが二度と変化しないため、以後のポーリング（完成版アート込みの再取得）を止める
+          completed = true;
+          finalArtDataUrl = res.finalArtDataUrl || finalArtDataUrl;
+          updateInstruction();
+          applyCompletedState();
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
         if (flow === "idle" || flow === "awaiting-self-color") {
           renderList();
           render();
@@ -174,10 +235,15 @@
   function renderList() {
     listEl.innerHTML = "";
     points.forEach(function (p) {
+      // 「完成」後は、参加者個別のrespondedAtの有無に関わらず、発起人自身も含めて全員が一律ロックされる
+      // （セッション全体のスナップショット確定のため。lib/participants.jsのpatchParticipantと対応）。
+      var locked = completed || !!p.respondedAt;
       var row = document.createElement("div");
-      row.className = "point-row" + (p.isSelf && !p.respondedAt ? " pending" : "") + (!p.isSelf && p.respondedAt ? " responded" : "");
+      row.className = "point-row" + (p.isSelf && !p.respondedAt && !completed ? " pending" : "")
+        + (!p.isSelf && p.respondedAt ? " responded" : "")
+        + (!p.isSelf && !p.respondedAt && completed ? " closed" : "");
 
-      if (p.isSelf && !p.respondedAt) {
+      if (p.isSelf && !locked) {
         // 決定するまでは、色を選んだ後でも何度でも選び直せる（confirmを伴わないPATCHはロックしない）
         var colorInput = document.createElement("input");
         colorInput.type = "color";
@@ -215,6 +281,7 @@
       var labelInput = document.createElement("input");
       labelInput.type = "text";
       labelInput.value = p.label;
+      labelInput.disabled = locked;
       labelInput.addEventListener("input", function () { p.label = labelInput.value; });
       labelInput.addEventListener("change", function () {
         apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { label: labelInput.value });
@@ -224,13 +291,13 @@
       var posSpan = document.createElement("span");
       posSpan.className = "pos";
       if (p.isSelf) {
-        posSpan.textContent = !p.color ? "色を選択中…" : (p.respondedAt ? "自分" : "決定してください");
+        posSpan.textContent = !p.color ? "色を選択中…" : (locked ? "自分" : "決定してください");
       } else {
-        posSpan.textContent = p.respondedAt ? "回答済み" : "招待リンク未回答";
+        posSpan.textContent = p.respondedAt ? "回答済み" : (completed ? "締め切り済み（未回答）" : "招待リンク未回答");
       }
       row.appendChild(posSpan);
 
-      if (p.isSelf && p.color && !p.respondedAt) {
+      if (p.isSelf && p.color && !locked) {
         // 色・影響範囲を選んだ後、明示的にこのボタンを押すまでは何度でも調整できる
         var confirmBtn = document.createElement("button");
         confirmBtn.textContent = "決定する";
@@ -242,7 +309,12 @@
         confirmBtn.style.color = "#fff";
         confirmBtn.style.cursor = "pointer";
         confirmBtn.addEventListener("click", function () {
-          apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { confirm: true }).then(function () {
+          apiPatch("/api/sessions/" + sessionId + "/participants/" + p.id, { confirm: true }).then(function (res) {
+            if (!res || res.error) {
+              // セッションが完成済み等でサーバーに拒否された。respondedAtは立っていないので、実際の状態に合わせ直す
+              resyncFromServer();
+              return;
+            }
             if (flow === "awaiting-self-color") {
               pendingSelf = null;
               flow = "idle";
@@ -260,16 +332,23 @@
         tag.className = "self-marker";
         tag.textContent = "★";
         row.appendChild(tag);
-      } else {
+      } else if (!completed) {
         var removeBtn = document.createElement("button");
         removeBtn.className = "remove";
         removeBtn.textContent = "×";
         removeBtn.addEventListener("click", function () {
-          fetch("/api/sessions/" + sessionId + "/participants/" + p.id, { method: "DELETE" }).then(function () {
-            points = points.filter(function (pt) { return pt.id !== p.id; });
-            renderList();
-            render();
-          });
+          fetch("/api/sessions/" + sessionId + "/participants/" + p.id, { method: "DELETE" })
+            .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
+            .then(function (result) {
+              if (!result.ok) {
+                // セッションが完成済み等でサーバーに拒否された。ローカルから消さず、実際の状態に合わせ直す
+                resyncFromServer();
+                return;
+              }
+              points = points.filter(function (pt) { return pt.id !== p.id; });
+              renderList();
+              render();
+            });
         });
         row.appendChild(removeBtn);
       }
@@ -302,10 +381,9 @@
       reachLabel.textContent = "影響範囲";
       reachRow.appendChild(reachLabel);
 
-      // 明示的に決定（confirm）した後は、発起人自身も含めて影響範囲を固定する（色を見てから強さを調整
-      // できてしまうと、位置決め時点の関係性の感覚ではなく色への印象で結果を歪めてしまうため）。
-      // 決定前（色を選んだだけの段階）はまだロックしない——colorではなくrespondedAtで判定する。
-      var locked = !!p.respondedAt;
+      // 明示的に決定（confirm）した後、または「完成」後は、発起人自身も含めて影響範囲を固定する
+      // （色を見てから強さを調整できてしまうと、位置決め時点の関係性の感覚ではなく色への印象で結果を
+      // 歪めてしまうため）。決定前（色を選んだだけの段階）はまだロックしない。
       if (locked) {
         var reachLocked = document.createElement("span");
         reachLocked.className = "reach-label";
@@ -332,9 +410,45 @@
   }
 
   addBtn.addEventListener("click", function () {
-    if (flow !== "idle") return;
+    if (flow !== "idle" || completed) return;
     flow = "placing-friend";
     updateInstruction();
+  });
+
+  completeBtn.addEventListener("click", function () {
+    if (completed || flow !== "idle") return;
+    var self = points.filter(function (p) { return p.isSelf; })[0];
+    if (!self || !self.color) {
+      window.alert("先に自分の色を選んでください。");
+      return;
+    }
+    var ok = window.confirm(
+      "完成すると、これ以上友達を追加したり、色・位置・影響範囲を変更したりできなくなる。未回答の友達枠は" +
+      "この時点で締め切られる。完成しますか？"
+    );
+    if (!ok) return;
+    render(); // 送信直前の状態を確実にcanvasへ反映してからダウンロード用画像を生成する
+    var dataUrl = canvas.toDataURL("image/png");
+    completeBtn.disabled = true;
+    apiPost("/api/sessions/" + sessionId + "/complete", { dataUrl: dataUrl }).then(function (res) {
+      if (res && res.completedAt) {
+        // res.finalArtDataUrlはサーバーに保存された値（既に他タブ等で完成済みだった場合はそちらが正）。
+        // 通常の初回成功時はここに今生成したdataUrlがそのまま反映されて返る。
+        completed = true;
+        finalArtDataUrl = res.finalArtDataUrl || dataUrl;
+        updateInstruction();
+        applyCompletedState();
+        renderList();
+        render();
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      } else {
+        completeBtn.disabled = false;
+        window.alert("完成に失敗した。" + (res && res.error ? res.error : ""));
+      }
+    }).catch(function () {
+      completeBtn.disabled = false;
+      window.alert("完成に失敗した（通信エラー）。もう一度試してください。");
+    });
   });
 
   var btnNaive = document.getElementById("modeNaive");
@@ -352,7 +466,7 @@
     var u = canvasPosToUnit(e.clientX, e.clientY);
     if (flow === "placing-self") { placeSelf(u); return; }
     if (flow === "placing-friend") { placeFriend(u); return; }
-    if (flow !== "idle") return;
+    if (flow !== "idle" || completed) return;
 
     // 明示的に決定（confirm）した点は、発起人自身も含めてドラッグ対象から外す（色を見てから位置を
     // 動かせてしまうバイアスを防ぐため。reach・colorのロックと同条件）
@@ -412,10 +526,16 @@
         pendingSelf = self && !self.color ? self : null;
         flow = pendingSelf ? "awaiting-self-color" : "idle";
         nextFriendNum = points.length; // ラベルの重複を避けるための簡易カウンタ
+        if (res.completedAt) {
+          completed = true;
+          finalArtDataUrl = res.finalArtDataUrl || null;
+        }
         updateInstruction();
+        applyCompletedState();
         renderList();
         render();
-        startPolling();
+        // 完成済みセッションは以後変化しないため、ポーリングを開始する必要がない
+        if (!completed) startPolling();
       }).catch(startFresh);
     } else {
       updateInstruction();
