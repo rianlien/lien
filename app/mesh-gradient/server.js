@@ -71,9 +71,26 @@ http.createServer(function (req, res) {
       if (err) { sendJson(res, 400, { error: "invalid json" }); return; }
       var sessionAdd = store.loadSession(sidAdd);
       if (!sessionAdd) { sendJson(res, 404, { error: "session not found" }); return; }
-      var pid = participants.addParticipant(sessionAdd, body);
+      var addResult = participants.addParticipant(sessionAdd, body);
       store.saveSession(sidAdd, sessionAdd);
-      sendJson(res, 200, { participantId: pid });
+      sendJson(res, addResult.status, addResult.body);
+    });
+    return;
+  }
+
+  // POST /api/sessions/:sid/complete
+  if (req.method === "POST" && segs.length === 4 && segs[0] === "api" && segs[1] === "sessions" && segs[3] === "complete") {
+    var sidComplete = segs[2];
+    readJsonBody(req, function (err, body) {
+      if (err) { sendJson(res, 400, { error: "invalid json" }); return; }
+      var sessionComplete = store.loadSession(sidComplete);
+      if (!sessionComplete) { sendJson(res, 404, { error: "session not found" }); return; }
+      var prep = participants.prepareCompletion(sessionComplete, body.artwork);
+      if (prep.status !== 200) { sendJson(res, prep.status, prep.body); return; }
+      store.saveArtwork(sidComplete, prep.buffer);
+      participants.markCompleted(sessionComplete);
+      store.saveSession(sidComplete, sessionComplete);
+      sendJson(res, 200, { completedAt: sessionComplete.completedAt });
     });
     return;
   }
@@ -83,7 +100,11 @@ http.createServer(function (req, res) {
     var sidGet = segs[2];
     var sessionGet = store.loadSession(sidGet);
     if (!sessionGet) { sendJson(res, 404, { error: "session not found" }); return; }
-    sendJson(res, 200, { sessionId: sidGet, participants: participants.listParticipants(sessionGet) });
+    sendJson(res, 200, {
+      sessionId: sidGet,
+      completedAt: sessionGet.completedAt || null,
+      participants: participants.listParticipants(sessionGet)
+    });
     return;
   }
 
@@ -120,6 +141,30 @@ http.createServer(function (req, res) {
     var resultDel = participants.deleteParticipant(sessionDel, pidDel);
     store.saveSession(sidDel, sessionDel);
     sendJson(res, resultDel.status, resultDel.body);
+    return;
+  }
+
+  // GET /api/sessions/:sid/participants/:pid/artwork
+  if (req.method === "GET" && segs.length === 6 && segs[0] === "api" && segs[1] === "sessions" && segs[3] === "participants" && segs[5] === "artwork") {
+    var sidArt = segs[2], pidArt = segs[4];
+    var sessionArt = store.loadSession(sidArt);
+    if (!sessionArt || !participants.canViewArtwork(sessionArt, pidArt)) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    var artworkBuf = store.loadArtwork(sidArt);
+    if (!artworkBuf) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    var artworkHeaders = { "Content-Type": "image/jpeg" };
+    if (url.searchParams.get("download")) {
+      artworkHeaders["Content-Disposition"] = "attachment; filename=\"mesh-gradient-" + sidArt + ".jpg\"";
+    }
+    res.writeHead(200, artworkHeaders);
+    res.end(artworkBuf);
     return;
   }
 

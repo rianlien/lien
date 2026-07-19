@@ -12,5 +12,9 @@ module.exports = async function handler(req, res) {
     res.status(404).json({ error: "session not found" });
     return;
   }
-  res.status(200).json({ sessionId: sid, participants: participants.listParticipants(session) });
+  res.status(200).json({
+    sessionId: sid,
+    completedAt: session.completedAt || null,
+    participants: participants.listParticipants(session)
+  });
 };
