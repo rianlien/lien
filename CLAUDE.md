@@ -41,6 +41,7 @@ When a change introduces, modifies, or removes a design constraint or policy, ex
 - いかなる作業でも `docs-use` skill を必ず使う。ドキュメント構造を把握しなければ適切なコンテキスト構築ができない。
 - ドキュメントファースト：開発してからドキュメントを作るのではなく、ドキュメントを書いてから、それを実現する（CODEMAP など実情ベースで書くものは例外）。
 - 章・タスクへの番号付け（Step 1:, Phase 1:, 1. 等）は禁止。名前を与える（例: `Step: {{task-name}}`）。後からの編集コストが増えるため。
+- human 由来の要望・仕様変更・フィードバックは、それがどの層（raw-rfp / rfp / requirements / internal-design のいずれ）に書かれる場合でも、`docs-use` skill の `human_inputs_notation`（`<human ts="...">` タグ）に従って原文（ないし直訳）を必ず残す。要約や「（明示要望：「…」）」的な地の文への埋め込みだけで済ませず、タグで囲んだ原文を残す。可能な限り、要望の起点となった `raw-rfp` にも遡って反映する（要件定義以降の層にだけ原文を置いて `raw-rfp` を更新しないままにしない）。
 
 ## Git 非管理ファイルへのリンク
 
@@ -57,6 +58,7 @@ Git-managed files must not contain references to Git-excluded paths (e.g., a scr
 ## skill
 
 作業の開始前・作業の途中で必要な skill を確認し、適宜必ずロードする。
+- 開発タスク（新規開発の着手、進め方の確認、フェーズ移行の判断、非同期フィードバックの受け取りを含む）では `rea` skill（rea cycle）を必ず起動し、その状態管理・段階（人間との調整 → raw-rfp〜requirements → implementation → internal-design → レビュー）に従う。
 
 ---
 ※ 元リポジトリ（dg402）にあった「Protected repositories」節は、複数リポジトリ運用時の worktree 誤操作防止ルールであり dg402 固有のため同梱していない。単一プロジェクトでは不要。

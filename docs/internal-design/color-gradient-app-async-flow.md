@@ -1,6 +1,6 @@
 # 色グラデーションアプリ — 内部設計（招待・非同期回答フロー）
 
-<internal_design status="unrealized" name="async_invite_response_flow_design" requirements="async_invite_response_flow">
+<internal_design status="realized" name="async_invite_response_flow_design" requirements="async_invite_response_flow">
 
 実装本体:
 - `app/mesh-gradient/lib/participants.js` — セッション/参加者に対する業務ロジック（作成・追加・確定・削除・

@@ -2,7 +2,7 @@ const participants = require("../../../lib/participants");
 const store = require("../../../lib/kv-store");
 
 module.exports = async function handler(req, res) {
-  if (req.method !== "GET") {
+  if (req.method !== "POST") {
     res.status(405).json({ error: "method not allowed" });
     return;
   }
@@ -12,6 +12,7 @@ module.exports = async function handler(req, res) {
     res.status(404).json({ error: "session not found" });
     return;
   }
-  const summary = participants.serializeSessionForInitiator(session);
-  res.status(200).json({ sessionId: sid, participants: summary.participants, completedAt: summary.completedAt, finalArtDataUrl: summary.finalArtDataUrl });
+  const result = participants.completeSession(session, (req.body || {}).dataUrl);
+  await store.saveSession(sid, session);
+  res.status(result.status).json(result.body);
 };

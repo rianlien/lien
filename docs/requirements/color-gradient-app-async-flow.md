@@ -1,6 +1,6 @@
 # 色グラデーションアプリ — 要件定義（招待・非同期回答フロー）
 
-<requirements status="unrealized" name="async_invite_response_flow" rfps="color_gradient_app">
+<requirements status="realized" name="async_invite_response_flow" rfps="color_gradient_app">
 
 ## この要件定義がカバーする範囲
 
@@ -35,6 +35,12 @@ rfp（[color-gradient-app.md](../rfp/color-gradient-app.md)）の中核体験の
   発起人の色以外（位置・他の友達の色）は引き続き一切渡さない。
   （このプロダクトはそもそも個人情報を収集しない設計だが、「発起人の主観的な人間関係マップ」は個人情報とは
   別の観点でセンシティブになりうるため、回答者への露出は発起人の色1点に絞る。）
+  - **この制約は「回答フェーズ中」に限定される**（fable-advisorへの相談を踏まえてユーザーが確定した前提）。
+    発起人が「完成」操作（[color-gradient-app-session-completion.md](./color-gradient-app-session-completion.md)
+    参照）を行った後は、回答済みの友達に完成版アート全体を見せる。「完成」という不可逆の明示操作自体が、
+    発起人自身の主観的な人間関係マップを友達へ公開する同意にあたる、という整理による（公開するかどうかを
+    別途選べるトグルは設けない。完成＝公開で統一する）。露出範囲・データ形式の詳細は
+    color-gradient-app-session-completion.md に委ねる。
 - **回答者は一度色を送信したら、その後はやり直せない**（明示要望）。送信後にリンクを開き直しても、
   すでに選んだ色のポストカードが読み取り専用で表示されるのみで、色を選び直す操作自体を提示しない。
   「直感で選ぶ」（rfp「理由も性格も説明も不要」）を、送信後の再考・上書きを許さないことで担保する。
@@ -67,9 +73,12 @@ rfp（[color-gradient-app.md](../rfp/color-gradient-app.md)）の中核体験の
 
 ## 未定義のまま残す項目（rfp由来、今回は確定しない）
 
-- スナップショットとして「完成」を確定するタイミング（回答数／発起人操作／期限のいずれか）。
 - 招待リンクの有効期限、なりすまし防止、データの保存期間（TTL・削除ポリシー）。「リンクを知っている＝
   その枠を編集できる」という前提が、公開インターネットで本当に許容できるかは未検証のまま実配布に進む
   （fable-advisorが指摘した残課題）。問題が起きた場合に見直す。
+- 画面上の文言（ボタンラベル・説明文・締め切り時のメッセージ等）全体のUXライティング。特に「決定する」と
+  「完成」（[color-gradient-app-session-completion.md](./color-gradient-app-session-completion.md)参照）
+  という2つの確定操作が並ぶことによる混同リスク、締め切られた招待リンクを開いた友達への表示文言は未検討の
+  まま残っている（明示要望：「全体のUXライティングはもう少し考えるべき。これは課題」）。
 
 </requirements>
