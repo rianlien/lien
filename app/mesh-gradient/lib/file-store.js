@@ -21,4 +21,29 @@ function saveSession(sid, session) {
   fs.writeFileSync(path.join(DATA_DIR, sid + ".json"), JSON.stringify(session, null, 2));
 }
 
-module.exports = { loadSession: loadSession, saveSession: saveSession };
+// 完成版アートはセッション本体のJSONとは別ファイルに保存する（JSONに埋め込むとデバッグ時に画像
+// ビューアで直接開けなくなる上、セッションの読み書きのたびに巨大な文字列を運ぶことになるため）。
+// ライフサイクルはセッションと同一（session_completion internal-design参照）。
+function artworkPath(sid) {
+  return path.join(DATA_DIR, sid + ".artwork.jpg");
+}
+
+function loadArtwork(sid) {
+  try {
+    return fs.readFileSync(artworkPath(sid));
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveArtwork(sid, buffer) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(artworkPath(sid), buffer);
+}
+
+module.exports = {
+  loadSession: loadSession,
+  saveSession: saveSession,
+  loadArtwork: loadArtwork,
+  saveArtwork: saveArtwork
+};

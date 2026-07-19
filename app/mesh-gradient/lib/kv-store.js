@@ -17,4 +17,22 @@ async function saveSession(sid, session) {
   await redis.set("session:" + sid, session);
 }
 
-module.exports = { loadSession: loadSession, saveSession: saveSession };
+// 完成版アートはセッション本体と別キーに保存する（既存の3秒間隔ポーリングがセッション本体を
+// 読むたびに巨大なbase64を運ぶことになるのを避けるため。session_completion internal-design参照）。
+// ライフサイクルはセッションと同一（セッションが消えるときはこのキーも一緒に消す）。
+async function loadArtwork(sid) {
+  const value = await redis.get("session:" + sid + ":artwork");
+  if (!value) return null;
+  return Buffer.from(value, "base64");
+}
+
+async function saveArtwork(sid, buffer) {
+  await redis.set("session:" + sid + ":artwork", buffer.toString("base64"));
+}
+
+module.exports = {
+  loadSession: loadSession,
+  saveSession: saveSession,
+  loadArtwork: loadArtwork,
+  saveArtwork: saveArtwork
+};
