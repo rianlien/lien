@@ -1,5 +1,6 @@
 const participants = require("../../../../lib/participants");
 const store = require("../../../../lib/kv-store");
+const { readJsonBody } = require("../../../../lib/read-json-body");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -12,7 +13,14 @@ module.exports = async function handler(req, res) {
     res.status(404).json({ error: "session not found" });
     return;
   }
-  const result = participants.addParticipant(session, req.body || {});
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    res.status(400).json({ error: "invalid json" });
+    return;
+  }
+  const result = participants.addParticipant(session, body);
   await store.saveSession(sid, session);
   res.status(result.status).json(result.body);
 };

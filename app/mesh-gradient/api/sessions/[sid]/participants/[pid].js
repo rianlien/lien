@@ -1,5 +1,6 @@
 const participants = require("../../../../lib/participants");
 const store = require("../../../../lib/kv-store");
+const { readJsonBody } = require("../../../../lib/read-json-body");
 
 module.exports = async function handler(req, res) {
   const sid = req.query.sid;
@@ -21,7 +22,14 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method === "PATCH") {
-    const result = participants.patchParticipant(session, pid, req.body || {});
+    let body;
+    try {
+      body = await readJsonBody(req);
+    } catch (e) {
+      res.status(400).json({ error: "invalid json" });
+      return;
+    }
+    const result = participants.patchParticipant(session, pid, body);
     await store.saveSession(sid, session);
     res.status(result.status).json(result.body);
     return;
