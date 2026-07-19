@@ -147,6 +147,13 @@ function completeSession(session, dataUrl) {
     // completedAt/finalArtDataUrlを添えて返すことで、呼び出し側が「実は完成済み」と正しく判定できるようにする。
     return { status: 409, body: { error: "already completed", completedAt: session.completedAt, finalArtDataUrl: session.finalArtDataUrl || null } };
   }
+  // 発起人自身の色が未設定のまま完成すると、render()の「色未設定の点は無視する」フィルタにより、
+  // 完成版アートに発起人自身の点が一切現れない状態で確定してしまう。index.html側にも同趣旨の確認
+  // （window.confirm前のアラート）があるが、直接APIを叩く経路もサーバー側で必ず塞ぐ。
+  const self = findSelf(session);
+  if (!self || !self.color) {
+    return { status: 400, body: { error: "self color is required before completing" } };
+  }
   if (typeof dataUrl !== "string" || dataUrl.indexOf("data:image/png;base64,") !== 0) {
     return { status: 400, body: { error: "dataUrl must be a base64-encoded PNG data URL" } };
   }
