@@ -1,17 +1,19 @@
 # 色グラデーションアプリ — 内部設計（発起人による「完成」確定）
 
-<internal_design status="unrealized" name="session_completion_design" requirements="session_completion">
+<internal_design status="realized" name="session_completion_design" requirements="session_completion">
 
-実装本体（想定、新規追加/変更）:
-- `app/mesh-gradient/lib/participants.js` — `completeSession`関数の追加。既存の`addParticipant`/
-  `patchParticipant`/`deleteParticipant`に、セッション完成後のロストロック判定を追加。
+実装本体:
+- `app/mesh-gradient/lib/participants.js` — `prepareCompletion`/`markCompleted`/`canViewArtwork`の追加。
+  既存の`addParticipant`/`patchParticipant`/`deleteParticipant`に、セッション完成後のロック判定を追加。
 - `app/mesh-gradient/lib/file-store.js` / `lib/kv-store.js` — 完成版アート（画像バイナリ）を、セッション本体
-  とは別のキー/ファイルとして読み書きする関数を追加（`loadArtwork`/`saveArtwork`）。
-- `app/mesh-gradient/server.js`、`api/sessions/[sid]/complete.js`（新規）、
-  `api/sessions/[sid]/participants/[pid]/artwork.js`（新規） — ローカル/Vercel両方に
-  `POST /api/sessions/:sid/complete`と`GET /api/sessions/:sid/participants/:pid/artwork`を追加。
-- `public/index.html` — 「完成」ボタン、固定解像度オフスクリーンcanvasでの完成版アート生成。
-- `public/reply.html` — 完成後、完成版アート（`<img>`＋ダウンロードリンク）を表示する分岐。
+  とは別のキー/ファイルとして読み書きする`loadArtwork`/`saveArtwork`。
+- `app/mesh-gradient/server.js`、`api/sessions/[sid]/complete.js`、
+  `api/sessions/[sid]/participants/[pid]/artwork.js` — ローカル/Vercel両方に
+  `POST /api/sessions/:sid/complete`と`GET /api/sessions/:sid/participants/:pid/artwork`。
+- `public/index.html` — 「完成する」ボタン、固定解像度オフスクリーンcanvasでの完成版アート生成、
+  完成後のロスター凍結表示。
+- `public/reply.html` — 完成後、完成版アート（`<img>`＋ダウンロードリンク）を表示する分岐、
+  未回答のまま締め切られた枠向けの表示。
 
 各判断はfable-advisorへの相談を踏まえて決定した（相談内容: 完成フラグの表現と、完成版アートの生成・保存方式）。
 
