@@ -26,7 +26,7 @@
 - `app/mesh-gradient/lib/participants.js` — セッション/参加者の業務ロジック（永続化方式から独立、ローカル/Vercel共有）。
 - `app/mesh-gradient/lib/file-store.js` — ローカル開発用永続化（JSONファイル、セッションごとに1ファイル）。
 - `app/mesh-gradient/lib/kv-store.js` — Vercelデプロイ用永続化（Upstash Redis）。
-- `app/mesh-gradient/server.js` — ローカル開発用サーバー（静的ファイル配信＋API、`.claude/launch.json`から起動）。
+- `app/mesh-gradient/dev-server.js` — ローカル開発用サーバー（静的ファイル配信＋API、`.claude/launch.json`から起動）。
 - `app/mesh-gradient/api/**` — Vercelデプロイ用serverless functions（同じAPIをVercel上で実行）。
 - `app/mesh-gradient/vercel.json` — Vercelのビルド設定（静的ファイルの出力先を`public/`に指定）。
 - `app/mesh-gradient/package.json` — 依存関係（`@upstash/redis`）。
@@ -34,5 +34,5 @@
 
 ## .claude
 
-- `.claude/launch.json` — dev server起動設定（`mesh-gradient-spike`が`app/mesh-gradient/server.js`を起動）。
+- `.claude/launch.json` — dev server起動設定（`mesh-gradient-spike`が`app/mesh-gradient/dev-server.js`を起動）。
 - `.claude/skills/` — rea / docs-use / vet / orchestrator 等のプロジェクト運用skill。

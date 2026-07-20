@@ -1,6 +1,6 @@
 // セッション/参加者に対する純粋なビジネスロジック。
 // 永続化方式（ローカルのJSONファイル／Vercel上のUpstash Redis）から独立させてあり、
-// server.js（ローカル開発用）とapi/*.js（Vercelデプロイ用）の両方から同じロジックを呼ぶ。
+// dev-server.js（ローカル開発用）とapi/*.js（Vercelデプロイ用）の両方から同じロジックを呼ぶ。
 // 引数のsessionはプレーンなJSオブジェクト（呼び出し側が読み書きする）。
 "use strict";
 

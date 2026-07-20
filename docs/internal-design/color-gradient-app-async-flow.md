@@ -7,7 +7,7 @@
   ロック判定）。永続化方式から独立した純粋関数として書いてあり、ローカル開発とVercelデプロイの両方で共有する。
 - `app/mesh-gradient/lib/file-store.js` — ローカル開発用の永続化（JSONファイル、セッションごとに1ファイル）。
 - `app/mesh-gradient/lib/kv-store.js` — Vercelデプロイ用の永続化（Upstash Redis）。
-- `app/mesh-gradient/server.js` — ローカル開発用サーバー（Node httpモジュール、file-storeを使う）。
+- `app/mesh-gradient/dev-server.js` — ローカル開発用サーバー（Node httpモジュール、file-storeを使う）。
 - `app/mesh-gradient/api/**` — Vercelデプロイ用のserverless functions（kv-storeを使う）。
 - `app/mesh-gradient/public/index.html`（発起人）、`public/reply.html`（回答者）、`public/mesh-render.js`
   （描画エンジン、発起人・回答者の両ページで共有）。
@@ -40,6 +40,19 @@ serverless functionsとしてAPIを実行するため、ファイルシステム
   統合され非推奨になっており、後継である`@upstash/redis`（`Redis.fromEnv()`）を直接使うのが現在の推奨。
   Vercelダッシュボードで「Upstash」インテグレーションをプロジェクトに接続すると、`Redis.fromEnv()`が読む
   環境変数（`KV_REST_API_URL`/`KV_REST_API_TOKEN`）が自動設定される。
+
+## ローカル開発サーバーは`server.js`ではなく`dev-server.js`という名前にする
+
+Vercelは、プロジェクトルート（または`src/`）直下に`server.{js,cjs,mjs,ts,cts,mts}`という名前のファイルが
+あり、かつそれが`.listen()`を呼んでいることを検出すると、それを「Node.jsサーバー」としてキャプチャし、
+**全リクエストをそのサーバーにルーティングしてしまう**（`api/**`のserverless functionsより優先される）。
+
+このプロジェクトのローカル開発用サーバーは元々`server.js`という名前だったため、Vercel本番デプロイ時に
+意図せずこの自動検出に引っかかり、`POST /api/sessions`等が本来の`api/sessions/index.js`ではなく
+ローカル用サーバーのルーティングロジックで処理される不具合が起きた（GETは`server.js`側に対応するルートが
+無く404、POSTは`server.js`側のJSON読み取りが本番環境で失敗し400 "invalid json"になっていた）。
+`dev-server.js`という名前に変更し、Vercelの自動検出条件に一致しないようにすることで、本来の`api/**`が
+使われるようにした。
 
 ## 回答者ページには「自分の分＋発起人の色1点だけ」しか渡さない
 
