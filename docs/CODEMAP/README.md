@@ -12,6 +12,8 @@
 - `docs/internal-design/color-gradient-app.md` — 内部設計（視覚表現の実装方式: Oklab・ドメインワープ・ドリップ）
 - `docs/internal-design/color-gradient-app-async-flow.md` — 内部設計（招待・非同期回答フローの実装方式: 永続化・API・ポーリング）
 - `docs/internal-design/color-gradient-app-session-completion.md` — 内部設計（「完成」確定の実装方式: 完成版アートの保存方式・公開範囲フィルタ・全面凍結ガード）
+- `docs/knowledge/color-gradient-app-color-science.md` — 背景知識（Oklab色空間・ドメインワープ・fBmノイズ・Mesh Gradientという用語の一般的な意味。プロジェクト固有の設計判断ではなく、各技術要素そのものの解説）
+- `docs/knowledge/color-gradient-app-cognitive-foundations.md` — 背景知識（プロダクトコンセプトの発想元になった認知科学・哲学の概念群: Theory of Mind・World/Self/Other Model・Phenomenology・Umwelt・Impression Formation・Cognitive Map・Similarity Space・Conceptual Spaces等）
 
 ## app（実装）
 

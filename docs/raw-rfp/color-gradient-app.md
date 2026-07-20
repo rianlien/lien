@@ -123,4 +123,29 @@ Mesh Gradient
 これはみんんが色を選んでくれたのをただグラデーションの平均値取るんじゃなくて、多分温度感とか彩度とか透明感見たいな部分が人間の印象として入ってると思うから、それを捉えた上で中間色を補正してあげる必要があると思っている
 </human>
 
+## 発想の元ネタになった認知科学・哲学の概念群
+
+（`docs/knowledge/color-gradient-app-color-science.md` 作成後、その知識docの拾い漏れを指摘するfeedback。「色科学・Mesh Gradient技術」だけでなく、プロダクトコンセプトそのものの発想の元ネタとして、認知科学・哲学の複数概念からも影響を受けているという明示。）
+
+<human ts="2026-07-20T23:40:17+09:00">
+人間の自己理解とか自己一致性みたいな認知科学部分も入れたい
+メンタルモデル（Mental Model）
+認知地図（Cognitive Map）
+類似性空間（Similarity Space）
+概念空間（Conceptual Spaces）
+Color Semantics
+Color Psychology
+Synesthesia（共感覚）
+Theory of Mind（心の理論）
+Social Perception
+Impression Formation
+Activation Graph
+World Model
+Other Model
+Umwelt（ユクスキュル）
+Phenomenology（現象学）
+
+とかから影響を受けて作ってるから
+</human>
+
 </raw_rfp>
