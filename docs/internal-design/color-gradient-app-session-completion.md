@@ -6,7 +6,7 @@
 - `app/mesh-gradient/lib/participants.js` — `completeSession`（完成確定）、`serializeSessionForInitiator`
   （発起人向けのセッション全体サマリ）を追加。`patchParticipant`・`addParticipant`・`deleteParticipant`に
   完成後の一律拒否ガードを追加。`serializeForRespondent`に`completedAt`・`finalArtDataUrl`を追加。
-- `app/mesh-gradient/server.js`、`app/mesh-gradient/api/sessions/[sid]/complete.js` —
+- `app/mesh-gradient/dev-server.js`、`app/mesh-gradient/api/sessions/[sid]/complete.js` —
   `POST /api/sessions/:sid/complete`。
 - `app/mesh-gradient/public/index.html`、`public/reply.html` — 完成フローのUI。
 
