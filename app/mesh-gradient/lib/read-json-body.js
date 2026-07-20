@@ -5,9 +5,8 @@
 
 function readJsonBody(req) {
   return new Promise(function (resolve, reject) {
-    // TEMP DEBUG (原因調査中、確認後に削除する): 本番で"invalid json"/timeoutが
-    // 再発する原因を特定するため、reqの実際の状態を一時的にログする。
-    console.log("[readJsonBody debug] req.body=", typeof req.body, JSON.stringify(req.body));
+    // TEMP DEBUG (原因調査中、確認後に削除する): req.bodyには触れない
+    // （getterアクセス自体が例外の原因になりうるため、意図的に除外する）。
     console.log("[readJsonBody debug] headers=", JSON.stringify(req.headers));
     console.log("[readJsonBody debug] readableEnded=", req.readableEnded, "complete=", req.complete);
 
