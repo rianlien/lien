@@ -5,17 +5,32 @@
 
 function readJsonBody(req) {
   return new Promise(function (resolve, reject) {
+    // TEMP DEBUG (原因調査中、確認後に削除する): 本番で"invalid json"/timeoutが
+    // 再発する原因を特定するため、reqの実際の状態を一時的にログする。
+    console.log("[readJsonBody debug] req.body=", typeof req.body, JSON.stringify(req.body));
+    console.log("[readJsonBody debug] headers=", JSON.stringify(req.headers));
+    console.log("[readJsonBody debug] readableEnded=", req.readableEnded, "complete=", req.complete);
+
     var chunks = [];
-    req.on("data", function (c) { chunks.push(c); });
+    req.on("data", function (c) {
+      console.log("[readJsonBody debug] data chunk len=", c.length);
+      chunks.push(c);
+    });
     req.on("end", function () {
+      var raw = chunks.length === 0 ? "" : Buffer.concat(chunks).toString("utf8");
+      console.log("[readJsonBody debug] end. chunks=", chunks.length, "raw=", JSON.stringify(raw));
       if (chunks.length === 0) { resolve({}); return; }
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        resolve(JSON.parse(raw));
       } catch (e) {
+        e.debugRaw = raw;
         reject(e);
       }
     });
-    req.on("error", reject);
+    req.on("error", function (e) {
+      console.log("[readJsonBody debug] error event=", e && e.message);
+      reject(e);
+    });
   });
 }
 

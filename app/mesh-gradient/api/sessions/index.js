@@ -11,7 +11,8 @@ module.exports = async function handler(req, res) {
   try {
     body = await readJsonBody(req);
   } catch (e) {
-    res.status(400).json({ error: "invalid json" });
+    // TEMP DEBUG (原因調査中、確認後に削除する)
+    res.status(400).json({ error: "invalid json", debugMessage: e && e.message, debugRaw: e && e.debugRaw });
     return;
   }
   const created = participants.createSession(body);
