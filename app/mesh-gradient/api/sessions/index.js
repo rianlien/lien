@@ -3,8 +3,13 @@ const store = require("../../lib/kv-store");
 const { readJsonBody } = require("../../lib/read-json-body");
 
 module.exports = async function handler(req, res) {
-  // TEMP DEBUG (原因調査中、確認後に削除する): req.bodyには一切触れず、
-  // ハンドラー到達自体だけを確認する。
+  // TEMP DEBUG (原因調査中、確認後に削除する): 本当に新しいコードが
+  // 実行されているか一切の曖昧さなく確認するためのマーカー。
+  res.status(299).json({ marker: "TOTALLY_NEW_CODE_V5", method: req.method });
+  return;
+};
+
+async function _unused_original_handler(req, res) {
   console.log("[handler debug] entered. method=", req.method);
   res.setHeader("x-debug-handler-reached", "1");
   if (req.method !== "POST") {
