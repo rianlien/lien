@@ -2,7 +2,7 @@
 
 ## 統治原則
 
-Intent-First。詳細は [CLAUDE.md](CLAUDE.md) 参照（dg402 リポジトリから移植）。
+Intent-First。詳細は [CLAUDE.md](CLAUDE.md) 参照
 
 ## 導入済みのskill
 
