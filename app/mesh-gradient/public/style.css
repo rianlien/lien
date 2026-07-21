@@ -252,47 +252,136 @@ h1 { font-size: 16px; margin: 0 0 4px; color: #2c2a24; }
   cursor: pointer;
 }
 
-/* ---- reply.html 専用: 回答者は色ピッカーとポストカードのみ ---- */
+/* ---- reply.html 専用: 回答者は色選択とポストカードのみ ---- */
 .reply-pane {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 32px;
-  gap: 24px;
+  padding: 40px 24px;
+  gap: 28px;
   width: 100%;
+  min-height: 100vh;
+  box-sizing: border-box;
+  position: relative;
+  /* 紙の質感（canvas側のPAPER_RGB [240,240,236]と揃えたradial-gradientの重ね合わせ。
+     画像アセット無しで軽量に、招待状を開いたような佇まいを出す） */
+  background:
+    radial-gradient(circle at 15% 8%, rgba(255,255,255,0.6), transparent 40%),
+    radial-gradient(circle at 85% 92%, rgba(200,196,184,0.25), transparent 45%),
+    #fdfbf7;
+  animation: reply-fade-in 0.5s ease-out;
+}
+@keyframes reply-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.reply-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: #b0a98f;
+  text-transform: uppercase;
 }
 .reply-question {
-  font-size: 20px;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: #2c2a24;
   text-align: center;
   max-width: 420px;
+  line-height: 1.4;
+}
+.reply-done-hint {
+  font-size: 13px;
+  color: #8f8a7c;
+  text-align: center;
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+/* 「絵の具パレット」— ネイティブのinput[type=color]だけに頼らず、
+   アプリの世界観（インク・絵の具）に合う厳選色から選べるようにする */
+.ink-palette {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: clamp(8px, 2.5vw, 14px);
+  max-width: 100%;
+  padding: 0 12px;
+}
+.ink-swatch {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  box-shadow: 0 2px 6px rgba(60,50,30,0.18), inset 0 0 0 2px rgba(255,255,255,0.5);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.ink-swatch:hover { transform: translateY(-2px) scale(1.06); }
+.ink-swatch.selected {
+  box-shadow: 0 3px 10px rgba(60,50,30,0.28), 0 0 0 3px #fdfbf7, 0 0 0 5px currentColor;
+}
+.ink-swatch.selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.9) inset;
+}
+
+.reply-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.reply-custom-link {
+  font-size: 12px;
+  color: #8f8a7c;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
 }
 .reply-picker {
-  width: 72px;
-  height: 72px;
+  width: 30px;
+  height: 30px;
   border: none;
   border-radius: 50%;
   padding: 0;
   background: none;
   cursor: pointer;
 }
+
+.reply-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  box-shadow: 0 4px 14px rgba(60,50,30,0.2), inset 0 0 0 3px rgba(255,255,255,0.55);
+  transition: background-color 0.2s ease;
+}
+
 .reply-submit {
-  padding: 12px 28px;
+  padding: 13px 32px;
   border-radius: 999px;
   border: none;
   background: #4a4af0;
   color: #fff;
   font-size: 14px;
+  letter-spacing: 0.04em;
   cursor: pointer;
+  box-shadow: 0 4px 16px rgba(74,74,240,0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
+.reply-submit:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(74,74,240,0.34); }
 .reply-submit:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
-}
-.reply-done-hint {
-  font-size: 13px;
-  color: #8f8a7c;
-  text-align: center;
+  box-shadow: none;
 }
