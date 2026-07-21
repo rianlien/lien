@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>色で表すなら？</title>
 <link rel="stylesheet" href="/style.css" />
 <style>
@@ -144,8 +145,18 @@
     renderForm(participant);
   }
 
+  // 「絵の具パレット」— アプリの世界観（インク・絵の具をスケッチブックへ）に合わせて選んだ6色。
+  // ネイティブのinput[type=color]だけに任せず、まず直感的にここから選べるようにする
+  // （「その他の色」リンクから、これまで通り自由な色選択にも逃がす）。
+  var INK_PALETTE = ["#c85a54", "#d9a441", "#6b8f5a", "#4a7a8f", "#6a5a9e", "#4a4640"];
+
   function renderForm(participant) {
     pane.innerHTML = "";
+
+    var eyebrow = document.createElement("div");
+    eyebrow.className = "reply-eyebrow";
+    eyebrow.textContent = "INVITED";
+    pane.appendChild(eyebrow);
 
     var question = document.createElement("div");
     question.className = "reply-question";
@@ -157,11 +168,65 @@
     hint.textContent = "理由や説明はいらない。直感で選んでください。送信すると選び直せない。";
     pane.appendChild(hint);
 
+    var selectedColor = INK_PALETTE[0];
+
+    var preview = document.createElement("div");
+    preview.className = "reply-preview";
+    preview.style.background = selectedColor;
+    pane.appendChild(preview);
+
+    var palette = document.createElement("div");
+    palette.className = "ink-palette";
+    pane.appendChild(palette);
+
+    var swatchButtons = [];
+    function selectColor(color) {
+      selectedColor = color;
+      preview.style.background = color;
+      swatchButtons.forEach(function (btn) {
+        btn.classList.toggle("selected", btn.dataset.color.toLowerCase() === color.toLowerCase());
+      });
+    }
+
+    INK_PALETTE.forEach(function (color, i) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ink-swatch" + (i === 0 ? " selected" : "");
+      btn.style.background = color;
+      btn.style.color = color; // .selectedのcurrentColorリング用
+      btn.dataset.color = color;
+      btn.setAttribute("aria-label", "この色を選ぶ");
+      btn.addEventListener("click", function () { selectColor(color); });
+      swatchButtons.push(btn);
+      palette.appendChild(btn);
+    });
+
+    var customRow = document.createElement("div");
+    customRow.className = "reply-custom-row";
+    pane.appendChild(customRow);
+
+    var customLink = document.createElement("button");
+    customLink.type = "button";
+    customLink.className = "reply-custom-link";
+    customLink.textContent = "この6色にない色を選ぶ";
+    customRow.appendChild(customLink);
+
     var picker = document.createElement("input");
     picker.type = "color";
     picker.className = "reply-picker";
-    picker.value = "#e8546a";
-    pane.appendChild(picker);
+    picker.value = selectedColor;
+    picker.style.display = "none";
+    customRow.appendChild(picker);
+
+    customLink.addEventListener("click", function () {
+      picker.style.display = "";
+      customLink.style.display = "none";
+      picker.click();
+    });
+    picker.addEventListener("input", function () {
+      swatchButtons.forEach(function (btn) { btn.classList.remove("selected"); });
+      selectColor(picker.value);
+    });
 
     var submit = document.createElement("button");
     submit.className = "reply-submit";
@@ -173,7 +238,7 @@
       fetch("/api/sessions/" + encodeURIComponent(sessionId) + "/participants/" + encodeURIComponent(participantId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ color: picker.value, confirm: true })
+        body: JSON.stringify({ color: selectedColor, confirm: true })
       })
         .then(function (r) {
           return r.json().then(function (body) { return { ok: r.ok, body: body }; });
